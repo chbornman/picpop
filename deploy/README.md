@@ -83,7 +83,7 @@ sudo useradd -m -s /bin/bash picpop
 sudo chown -R picpop:picpop /opt/picpop
 
 # Copy files
-sudo cp -r server/* /opt/picpop/
+sudo cp -r backend/* /opt/picpop/
 
 # Setup Python environment
 sudo -u picpop python3 -m venv /opt/picpop/.venv
@@ -129,7 +129,7 @@ sudo cp src-tauri/target/release/picpop-kiosk /opt/picpop/kiosk/
 
 To change the WiFi name/password, edit:
 1. `deploy/hostapd.conf` - ssid and wpa_passphrase
-2. `server/app/core/config.py` - wifi_ssid and wifi_password
+2. `backend/app/core/config.py` - wifi_ssid and wifi_password
 
 ## Troubleshooting
 
@@ -178,7 +178,7 @@ git clone <repo-url> picpop-update
 cd picpop-update
 
 # Update server
-sudo cp -r server/* /opt/picpop/
+sudo cp -r backend/* /opt/picpop/
 sudo -u picpop /opt/picpop/.venv/bin/pip install -e /opt/picpop
 
 # Rebuild kiosk (if changed)

@@ -90,7 +90,7 @@ picpop/
 │       └── src/
 │           └── main.rs
 │
-├── server/                     # FastAPI backend
+├── backend/                     # FastAPI backend
 │   ├── app/
 │   │   ├── main.py             # FastAPI app + lifespan
 │   │   ├── api/
@@ -108,7 +108,7 @@ picpop/
 │   │       └── config.py
 │   └── pyproject.toml
 │
-├── mobile/                     # Phone web app (served by FastAPI)
+├── frontend/                     # Phone web app (served by FastAPI)
 │   ├── src/
 │   │   ├── App.tsx
 │   │   ├── components/
@@ -295,7 +295,7 @@ bun run tauri build --target aarch64-unknown-linux-gnu
 # Build mobile assets (served by FastAPI)
 cd mobile
 bun run build
-cp -r dist ../server/static/mobile
+cp -r dist ../backend/static/frontend
 ```
 
 ## Deployment on Radxa ZERO 3W

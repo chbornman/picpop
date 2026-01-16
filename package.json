@@ -7,21 +7,21 @@
   "license": "MIT",
   "workspaces": [
     "packages/*",
-    "mobile",
+    "frontend",
     "kiosk"
   ],
   "scripts": {
-    "dev:server": "cd server && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
-    "dev:mobile": "cd mobile && bun run dev --host",
+    "dev:backend": "cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:frontend": "cd frontend && bun run dev --host",
     "dev:kiosk": "cd kiosk && bun run tauri dev",
-    "build:mobile": "cd mobile && bun run build",
+    "build:frontend": "cd frontend && bun run build",
     "build:kiosk": "cd kiosk && bun run tauri build",
-    "build:all": "bun run build:mobile && bun run build:kiosk",
+    "build:all": "bun run build:frontend && bun run build:kiosk",
     "lint": "bun run --filter '*' lint",
     "typecheck": "bun run --filter '*' typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "clean": "rm -rf node_modules packages/*/node_modules mobile/node_modules kiosk/node_modules"
+    "clean": "rm -rf node_modules packages/*/node_modules frontend/node_modules kiosk/node_modules"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

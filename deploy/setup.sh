@@ -49,9 +49,9 @@ source /opt/picpop/.venv/bin/activate
 pip install --upgrade pip
 
 # Copy server files (assumes they're in current directory)
-if [ -d "./server" ]; then
+if [ -d "./backend" ]; then
     echo "Copying server files..."
-    cp -r ./server/* /opt/picpop/
+    cp -r ./backend/* /opt/picpop/
     pip install -e /opt/picpop
 fi
 
