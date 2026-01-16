@@ -9,29 +9,7 @@
         "typescript": "^5.7.2",
       },
     },
-    "kiosk": {
-      "name": "kiosk",
-      "version": "0.1.0",
-      "dependencies": {
-        "@tauri-apps/api": "^2.0.0",
-        "framer-motion": "^11.15.0",
-        "lucide-react": "^0.468.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-      },
-      "devDependencies": {
-        "@tauri-apps/cli": "^2.0.0",
-        "@types/react": "^19.0.2",
-        "@types/react-dom": "^19.0.2",
-        "@vitejs/plugin-react": "^4.3.4",
-        "autoprefixer": "^10.4.20",
-        "postcss": "^8.4.49",
-        "tailwindcss": "^3.4.17",
-        "typescript": "^5.7.2",
-        "vite": "^6.0.5",
-      },
-    },
-    "mobile": {
+    "frontend": {
       "name": "mobile",
       "version": "0.1.0",
       "dependencies": {
@@ -52,6 +30,28 @@
         "tailwindcss": "^3.4.17",
         "typescript": "^5.7.2",
         "typescript-eslint": "^8.18.1",
+        "vite": "^6.0.5",
+      },
+    },
+    "kiosk": {
+      "name": "kiosk",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tauri-apps/api": "^2.0.0",
+        "framer-motion": "^11.15.0",
+        "lucide-react": "^0.468.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "devDependencies": {
+        "@tauri-apps/cli": "^2.0.0",
+        "@types/react": "^19.0.2",
+        "@types/react-dom": "^19.0.2",
+        "@vitejs/plugin-react": "^4.3.4",
+        "autoprefixer": "^10.4.20",
+        "postcss": "^8.4.49",
+        "tailwindcss": "^3.4.17",
+        "typescript": "^5.7.2",
         "vite": "^6.0.5",
       },
     },
@@ -497,7 +497,7 @@
 
     "minimatch": ["minimatch@3.1.2", "", { "dependencies": { "brace-expansion": "^1.1.7" } }, "sha512-J7p63hRiAjw1NDEww1W7i37+ByIrOWO5XQQAzZ3VOcL0PNybwpfmV/N05zFAzwQ9USyEcX6t3UO+K5aqBQOIHw=="],
 
-    "mobile": ["mobile@workspace:mobile"],
+    "mobile": ["mobile@workspace:frontend"],
 
     "motion-dom": ["motion-dom@11.18.1", "", { "dependencies": { "motion-utils": "^11.18.1" } }, "sha512-g76KvA001z+atjfxczdRtw/RXOM3OMSdd1f4DL77qCTF/+avrRJiawSG4yDibEQ215sr9kpinSlX2pCTJ9zbhw=="],
 
