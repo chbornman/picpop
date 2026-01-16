@@ -1,0 +1,32 @@
+# PicPop Kiosk Application Service
+# Copy to /etc/systemd/system/picpop-kiosk.service on the Radxa device
+# Then run: systemctl daemon-reload && systemctl enable picpop-kiosk
+
+[Unit]
+Description=PicPop Kiosk Application
+After=graphical.target picpop.service
+Wants=picpop.service
+
+[Service]
+Type=simple
+User=picpop
+Group=picpop
+Environment="DISPLAY=:0"
+Environment="WAYLAND_DISPLAY=wayland-0"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+WorkingDirectory=/opt/picpop/kiosk
+
+# Start the Tauri kiosk app
+ExecStart=/opt/picpop/kiosk/picpop-kiosk
+
+# Restart on failure
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=picpop-kiosk
+
+[Install]
+WantedBy=graphical.target

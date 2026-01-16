@@ -1,0 +1,34 @@
+{
+  "name": "picpop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Offline photo booth with touchscreen kiosk and smartphone integration",
+  "author": "Caleb Bornman",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "mobile",
+    "kiosk"
+  ],
+  "scripts": {
+    "dev:server": "cd server && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:mobile": "cd mobile && bun run dev --host",
+    "dev:kiosk": "cd kiosk && bun run tauri dev",
+    "build:mobile": "cd mobile && bun run build",
+    "build:kiosk": "cd kiosk && bun run tauri build",
+    "build:all": "bun run build:mobile && bun run build:kiosk",
+    "lint": "bun run --filter '*' lint",
+    "typecheck": "bun run --filter '*' typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "rm -rf node_modules packages/*/node_modules mobile/node_modules kiosk/node_modules"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "bun@1.1.38"
+}
