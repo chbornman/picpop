@@ -33,7 +33,7 @@ export default function App() {
   // WiFi QR URL (doesn't require a session)
   const wifiQrUrl = `${API_BASE}/api/v1/sessions/wifi-qr?size=512`;
 
-  // Camera preview URL (MJPEG stream) - 30fps default, use ?fps=60 for higher
+  // Camera preview URL (MJPEG stream)
   const previewUrl = `${API_BASE}/api/v1/camera/preview?fps=30`;
 
   // Connect to WebSocket for session

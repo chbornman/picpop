@@ -1,6 +1,7 @@
-"""Camera preview streaming endpoint."""
+"""Camera preview streaming."""
 
 import asyncio
+import logging
 from typing import AsyncGenerator
 
 from fastapi import APIRouter
@@ -8,94 +9,73 @@ from fastapi.responses import StreamingResponse, JSONResponse
 
 from app.core.config import settings
 from app.services.camera import (
-    get_shared_camera,
-    get_capture_lock,
-    CameraNotFoundError,
-    CaptureError,
+    get_camera,
+    wait_if_paused,
+    is_preview_paused,
+    CameraError,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_preview_active = False
 
+async def mjpeg_stream(fps: int = 30) -> AsyncGenerator[bytes, None]:
+    """Generate MJPEG frames from camera."""
+    camera = get_camera(settings.camera_backend)
+    frame_interval = 1.0 / fps if fps > 0 else 0
+    frame_count = 0
 
-async def generate_mjpeg_frames(target_fps: int = 30) -> AsyncGenerator[bytes, None]:
-    """
-    Generator that yields MJPEG frames from the camera.
+    logger.info(f"Starting preview stream at {fps} fps")
 
-    Each frame is wrapped in multipart boundaries for MJPEG streaming.
-    Pauses when capture is in progress (respects capture lock).
-    """
-    global _preview_active
-    _preview_active = True
+    while True:
+        # Wait if capture is happening
+        await wait_if_paused()
 
-    camera = get_shared_camera(settings.camera_backend)
-    capture_lock = get_capture_lock()
-
-    # Target frame interval (0 = as fast as possible)
-    frame_interval = 1.0 / target_fps if target_fps > 0 else 0
-
-    try:
-        while _preview_active:
-            # Check if capture is in progress - if so, wait
-            if capture_lock.locked():
-                await asyncio.sleep(0.1)
-                continue
-
-            # Ensure camera is connected before each frame attempt
-            if not await camera.ensure_connected():
+        # Connect if needed
+        if not camera.is_connected():
+            connected = await camera.connect()
+            if not connected:
                 await asyncio.sleep(1.0)
                 continue
 
-            try:
-                # Capture preview frame
-                frame_data = await camera.capture_preview()
+        try:
+            frame = await camera.get_preview_frame()
+            frame_count += 1
 
-                # Yield MJPEG frame with boundary
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n"
-                    b"Content-Length: " + str(len(frame_data)).encode() + b"\r\n"
-                    b"\r\n" + frame_data + b"\r\n"
-                )
+            if frame_count == 1:
+                logger.info("First preview frame captured")
+            elif frame_count % 300 == 0:
+                logger.debug(f"Preview: {frame_count} frames")
 
-                # Control frame rate (if specified)
-                if frame_interval > 0:
-                    await asyncio.sleep(frame_interval)
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n"
+                b"Content-Length: " + str(len(frame)).encode() + b"\r\n"
+                b"\r\n" + frame + b"\r\n"
+            )
 
-            except (CaptureError, CameraNotFoundError):
-                # Camera busy or disconnected, wait and retry
-                await asyncio.sleep(0.5)
-            except Exception:
-                # Other error, wait and retry
-                await asyncio.sleep(0.1)
-    finally:
-        _preview_active = False
+            if frame_interval > 0:
+                await asyncio.sleep(frame_interval)
+
+        except CameraError as e:
+            logger.warning(f"Preview frame error: {e}")
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Unexpected preview error: {e}")
+            await asyncio.sleep(0.1)
 
 
 @router.get("/preview")
-async def camera_preview_stream(fps: int = 30):
+async def preview(fps: int = 30):
     """
     Stream live camera preview as MJPEG.
 
-    This endpoint returns a multipart stream that can be used directly
-    in an <img> tag for live preview:
-
-        <img src="/api/v1/camera/preview" />
-        <img src="/api/v1/camera/preview?fps=60" />
-
-    Args:
-        fps: Target frames per second (default 30, use 0 for max speed)
-
-    Note: The stream will auto-reconnect if the camera is unavailable.
+    Use in an img tag: <img src="/api/v1/camera/preview" />
     """
-    # Clamp FPS to reasonable range
-    target_fps = max(0, min(fps, 60))
+    target_fps = max(1, min(fps, 60))
 
-    # Start the stream - it will handle connection internally
-    # This allows the stream to reconnect if camera becomes available later
     return StreamingResponse(
-        generate_mjpeg_frames(target_fps=target_fps),
+        mjpeg_stream(target_fps),
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -106,26 +86,69 @@ async def camera_preview_stream(fps: int = 30):
     )
 
 
-@router.get("/preview/status")
-async def preview_status():
+@router.get("/frame")
+async def single_frame():
     """
-    Get camera preview status.
+    Get a single preview frame as JPEG.
 
-    Returns whether the camera is connected and supports preview.
+    Use this for polling-based preview in environments where
+    MJPEG streams don't work well (like Tauri WebView).
     """
-    camera = get_shared_camera(settings.camera_backend)
-    connected = await camera.is_connected()
+    from fastapi.responses import Response
 
+    camera = get_camera(settings.camera_backend)
+
+    if not camera.is_connected():
+        if not await camera.connect():
+            return Response(status_code=503, content=b"Camera not connected")
+
+    try:
+        frame = await camera.get_preview_frame()
+        return Response(
+            content=frame,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, no-store",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+    except CameraError as e:
+        return Response(status_code=503, content=str(e).encode())
+
+
+@router.get("/status")
+async def status():
+    """Get camera status."""
+    camera = get_camera(settings.camera_backend)
     return JSONResponse({
-        "connected": connected,
-        "supportsPreview": camera.supports_preview() if connected else False,
-        "previewActive": _preview_active,
+        "connected": camera.is_connected(),
+        "previewPaused": is_preview_paused(),
     })
 
 
-@router.post("/preview/stop")
-async def stop_preview():
-    """Stop the preview stream."""
-    global _preview_active
-    _preview_active = False
-    return JSONResponse({"status": "stopped"})
+@router.post("/connect")
+async def connect():
+    """Connect to camera."""
+    camera = get_camera(settings.camera_backend)
+    connected = await camera.connect()
+    return JSONResponse({"connected": connected})
+
+
+@router.post("/disconnect")
+async def disconnect():
+    """Disconnect from camera."""
+    camera = get_camera(settings.camera_backend)
+    await camera.disconnect()
+    return JSONResponse({"connected": False})
+
+
+@router.post("/reset")
+async def reset():
+    """Reset camera connection."""
+    camera = get_camera(settings.camera_backend)
+
+    if camera.is_connected():
+        await camera.disconnect()
+
+    connected = await camera.connect()
+    return JSONResponse({"connected": connected})

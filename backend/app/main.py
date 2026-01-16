@@ -25,8 +25,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # Shutdown
-    pass
+    # Shutdown - release camera
+    from app.services.camera import get_camera
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        camera = get_camera(settings.camera_backend)
+        if camera.is_connected():
+            logger.info("Shutting down: disconnecting camera...")
+            await camera.disconnect()
+            logger.info("Camera disconnected on shutdown")
+    except Exception as e:
+        logger.warning(f"Error disconnecting camera on shutdown: {e}")
 
 
 app = FastAPI(
