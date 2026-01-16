@@ -14,8 +14,6 @@ FastAPI backend for the PicPop photo booth system.
 ## Development
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-uvicorn app.main:app --reload
+uv sync
+uv run uvicorn app.main:app --reload
 ```
