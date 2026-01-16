@@ -85,12 +85,12 @@ export function PhotosScreen({ photos, stripUrl, isCapturing }: PhotosScreenProp
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: index * 0.1 }}
               onClick={() => openViewer(index)}
-              className="aspect-[3/4] rounded-xl overflow-hidden bg-white/10 relative group"
+              className="rounded-xl overflow-hidden bg-white/10 relative group"
             >
               <img
                 src={photo.thumbnailUrl}
                 alt={`Photo ${photo.sequence}`}
-                className="w-full h-full object-cover"
+                className="w-full h-auto object-contain"
               />
               <div className="absolute inset-0 bg-black/0 group-active:bg-black/20 transition-colors" />
             </motion.button>

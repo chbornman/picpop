@@ -1,23 +1,32 @@
-# PicPop Kiosk Application Service
+# PicPop Kiosk Application Service (Cage + Wayland)
 # Copy to /etc/systemd/system/picpop-kiosk.service on the Radxa device
 # Then run: systemctl daemon-reload && systemctl enable picpop-kiosk
 
 [Unit]
 Description=PicPop Kiosk Application
-After=graphical.target picpop.service
-Wants=picpop.service
+After=systemd-user-sessions.service picpop.service
+Wants=dbus.socket systemd-logind.service picpop.service
 
 [Service]
 Type=simple
 User=picpop
 Group=picpop
-Environment="DISPLAY=:0"
-Environment="WAYLAND_DISPLAY=wayland-0"
+
+# XDG runtime directory (required for Wayland)
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
+
+# WebKitGTK workarounds for Wayland/wlroots stability
+Environment="WEBKIT_DISABLE_COMPOSITING_MODE=1"
+Environment="WEBKIT_DISABLE_DMABUF_RENDERER=1"
+Environment="GDK_BACKEND=wayland"
+
+# Workaround for cursor issues on some ARM GPUs
+Environment="WLR_NO_HARDWARE_CURSORS=1"
+
 WorkingDirectory=/opt/picpop/kiosk
 
-# Start the Tauri kiosk app
-ExecStart=/opt/picpop/kiosk/picpop-kiosk
+# Launch Cage with the Tauri app (dbus-run-session prevents GTK startup delays)
+ExecStart=/usr/bin/dbus-run-session /usr/bin/cage /opt/picpop/kiosk/picpop-kiosk
 
 # Restart on failure
 Restart=always

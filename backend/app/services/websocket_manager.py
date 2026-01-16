@@ -204,6 +204,20 @@ class WebSocketManager:
             }
         })
 
+    async def send_capture_failed(
+        self,
+        session_id: str,
+        error: str,
+    ) -> None:
+        """Notify all clients that capture failed."""
+        await self.broadcast_to_session(session_id, {
+            "type": "capture_failed",
+            "data": {
+                "sessionId": session_id,
+                "error": error,
+            }
+        })
+
     async def send_session_ended(self, session_id: str) -> None:
         """Notify all clients that session has ended."""
         await self.broadcast_to_session(session_id, {

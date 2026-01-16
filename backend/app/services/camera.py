@@ -27,7 +27,7 @@ class CameraService(ABC):
 
     @abstractmethod
     async def connect(self) -> bool:
-        """Connect to camera. Returns True if successful."""
+        """Connect to camera. Returns True if successful. Safe to call multiple times."""
 
     @abstractmethod
     async def disconnect(self) -> None:
@@ -38,8 +38,24 @@ class CameraService(ABC):
         """Capture image and save to path. Returns the saved file path."""
 
     @abstractmethod
+    async def capture_preview(self) -> bytes:
+        """Capture a single preview frame. Returns JPEG bytes."""
+
+    @abstractmethod
     async def is_connected(self) -> bool:
         """Check if camera is connected."""
+
+    @abstractmethod
+    async def ensure_connected(self) -> bool:
+        """Ensure camera is connected, connecting if needed. Returns True if connected."""
+
+    @abstractmethod
+    def supports_preview(self) -> bool:
+        """Check if camera supports live preview."""
+
+
+class PreviewNotSupportedError(CameraError):
+    """Camera doesn't support preview."""
 
 
 class GPhoto2Camera(CameraService):
@@ -48,36 +64,59 @@ class GPhoto2Camera(CameraService):
     def __init__(self) -> None:
         self._camera: "gp.Camera | None" = None
         self._context: "gp.Context | None" = None
+        self._supports_preview: bool = False
+        self._preview_lock = asyncio.Lock()
+        self._connection_lock = asyncio.Lock()
 
     async def connect(self) -> bool:
-        """Connect to the first available camera."""
+        """Connect to the first available camera. Safe to call multiple times."""
         import gphoto2 as gp
 
-        try:
-            self._context = gp.Context()
-            self._camera = gp.Camera()
-            self._camera.init(self._context)
+        async with self._connection_lock:
+            # Already connected - return success
+            if self._camera is not None:
+                logger.debug("Camera already connected")
+                return True
 
-            # Get camera summary to verify connection
-            summary = self._camera.get_summary(self._context)
-            logger.info(f"Connected to camera: {summary.text[:100]}...")
-            return True
-        except gp.GPhoto2Error as e:
-            logger.error(f"Failed to connect to camera: {e}")
-            self._camera = None
-            self._context = None
-            return False
+            try:
+                self._context = gp.Context()
+                self._camera = gp.Camera()
+                await asyncio.to_thread(self._camera.init, self._context)
+
+                # Get camera summary to verify connection
+                summary = await asyncio.to_thread(
+                    self._camera.get_summary, self._context
+                )
+                logger.info(f"Connected to camera: {summary.text[:100]}...")
+
+                # Test if camera supports preview
+                try:
+                    await asyncio.to_thread(self._camera.capture_preview)
+                    self._supports_preview = True
+                    logger.info("Camera supports live preview")
+                except gp.GPhoto2Error:
+                    self._supports_preview = False
+                    logger.info("Camera does not support live preview")
+
+                return True
+            except gp.GPhoto2Error as e:
+                logger.error(f"Failed to connect to camera: {e}")
+                self._camera = None
+                self._context = None
+                return False
 
     async def disconnect(self) -> None:
         """Disconnect from camera."""
-        if self._camera:
-            try:
-                self._camera.exit(self._context)
-            except Exception as e:
-                logger.warning(f"Error disconnecting camera: {e}")
-            finally:
-                self._camera = None
-                self._context = None
+        async with self._connection_lock:
+            if self._camera:
+                try:
+                    await asyncio.to_thread(self._camera.exit, self._context)
+                except Exception as e:
+                    logger.warning(f"Error disconnecting camera: {e}")
+                finally:
+                    self._camera = None
+                    self._context = None
+                    logger.info("Camera disconnected")
 
     async def capture(self, save_path: Path) -> Path:
         """Capture image and save to specified path."""
@@ -118,15 +157,44 @@ class GPhoto2Camera(CameraService):
             raise CaptureError(f"Capture failed: {e}") from e
 
     async def is_connected(self) -> bool:
-        """Check if camera is connected and responsive."""
-        if not self._camera:
-            return False
-        try:
-            import gphoto2 as gp
-            self._camera.get_summary(self._context)
+        """Check if camera is connected."""
+        return self._camera is not None
+
+    async def ensure_connected(self) -> bool:
+        """Ensure camera is connected, connecting if needed. Returns True if connected."""
+        if self._camera is not None:
             return True
-        except gp.GPhoto2Error:
-            return False
+        return await self.connect()
+
+    async def capture_preview(self) -> bytes:
+        """Capture a single preview frame from the camera."""
+        import gphoto2 as gp
+
+        if not self._camera or not self._context:
+            raise CameraNotFoundError("Camera not connected")
+
+        if not self._supports_preview:
+            raise PreviewNotSupportedError("Camera does not support preview")
+
+        async with self._preview_lock:
+            try:
+                # Capture preview frame
+                camera_file = await asyncio.to_thread(
+                    self._camera.capture_preview
+                )
+
+                # Get the data as bytes
+                file_data = await asyncio.to_thread(
+                    camera_file.get_data_and_size
+                )
+                return bytes(file_data)
+
+            except gp.GPhoto2Error as e:
+                raise CaptureError(f"Preview capture failed: {e}") from e
+
+    def supports_preview(self) -> bool:
+        """Check if camera supports live preview."""
+        return self._supports_preview
 
 
 class MockCamera(CameraService):
@@ -135,9 +203,12 @@ class MockCamera(CameraService):
     def __init__(self) -> None:
         self._connected = False
         self._capture_count = 0
+        self._preview_count = 0
 
     async def connect(self) -> bool:
-        """Simulate camera connection."""
+        """Simulate camera connection. Safe to call multiple times."""
+        if self._connected:
+            return True
         logger.info("Mock camera connected")
         self._connected = True
         return True
@@ -209,6 +280,84 @@ class MockCamera(CameraService):
         """Check mock connection status."""
         return self._connected
 
+    async def ensure_connected(self) -> bool:
+        """Ensure mock camera is connected."""
+        if self._connected:
+            return True
+        return await self.connect()
+
+    async def capture_preview(self) -> bytes:
+        """Generate a mock preview frame."""
+        from PIL import Image, ImageDraw, ImageFont
+        from datetime import datetime
+        import io
+
+        if not self._connected:
+            raise CameraNotFoundError("Mock camera not connected")
+
+        self._preview_count += 1
+
+        # Create a preview image (smaller than capture)
+        width, height = 640, 480
+
+        # Cycle through colors for visual feedback
+        colors = [
+            (75, 0, 130),    # Indigo
+            (138, 43, 226),  # Blue Violet
+            (255, 20, 147),  # Deep Pink
+            (0, 191, 255),   # Deep Sky Blue
+            (50, 205, 50),   # Lime Green
+        ]
+        bg_color = colors[self._preview_count % len(colors)]
+
+        img = Image.new("RGB", (width, height), color=bg_color)
+        draw = ImageDraw.Draw(img)
+
+        # Add timestamp for visual feedback that frames are updating
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        text = f"PREVIEW #{self._preview_count}\n{timestamp}"
+
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+        except OSError:
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf", 36)
+            except OSError:
+                font = ImageFont.load_default()
+
+        # Center the text
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        draw.text((x, y), text, fill=(255, 255, 255), font=font, align="center")
+
+        # Draw border to make it look like a viewfinder
+        border_color = (255, 255, 255, 128)
+        draw.rectangle([(20, 20), (width - 20, height - 20)], outline=border_color, width=2)
+
+        # Corner markers
+        corner_len = 30
+        for cx, cy in [(40, 40), (width - 40, 40), (40, height - 40), (width - 40, height - 40)]:
+            if cx < width // 2:
+                draw.line([(cx, cy), (cx + corner_len, cy)], fill=(255, 255, 255), width=3)
+            else:
+                draw.line([(cx, cy), (cx - corner_len, cy)], fill=(255, 255, 255), width=3)
+            if cy < height // 2:
+                draw.line([(cx, cy), (cx, cy + corner_len)], fill=(255, 255, 255), width=3)
+            else:
+                draw.line([(cx, cy), (cx, cy - corner_len)], fill=(255, 255, 255), width=3)
+
+        # Save to bytes
+        output = io.BytesIO()
+        img.save(output, format="JPEG", quality=80)
+        return output.getvalue()
+
+    def supports_preview(self) -> bool:
+        """Mock camera always supports preview."""
+        return True
+
 
 def create_camera(backend: str = "gphoto2") -> CameraService:
     """Factory to create camera service based on backend type."""
@@ -218,3 +367,21 @@ def create_camera(backend: str = "gphoto2") -> CameraService:
         return GPhoto2Camera()
     else:
         raise ValueError(f"Unknown camera backend: {backend}")
+
+
+# Global shared camera instance and lock
+_shared_camera: CameraService | None = None
+_capture_lock = asyncio.Lock()
+
+
+def get_shared_camera(backend: str = "gphoto2") -> CameraService:
+    """Get the shared camera singleton instance."""
+    global _shared_camera
+    if _shared_camera is None:
+        _shared_camera = create_camera(backend)
+    return _shared_camera
+
+
+def get_capture_lock() -> asyncio.Lock:
+    """Get the capture lock for coordinating preview/capture."""
+    return _capture_lock

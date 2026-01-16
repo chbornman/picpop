@@ -4,21 +4,18 @@
   "version": "0.1.0",
   "identifier": "com.picpop.kiosk",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
         "title": "PicPop",
-        "width": 1920,
-        "height": 1080,
-        "fullscreen": true,
+        "fullscreen": false,
         "decorations": false,
-        "resizable": false,
-        "alwaysOnTop": true,
+        "resizable": true,
         "focus": true
       }
     ],

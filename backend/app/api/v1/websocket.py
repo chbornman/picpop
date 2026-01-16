@@ -50,16 +50,15 @@ async def kiosk_websocket(
 
     await ws_manager.connect_kiosk(websocket, session_id)
 
-    # Send initial session state
-    await websocket.send_json({
-        "type": "kiosk_connected",
-        "data": {
-            "sessionId": session_id,
-            "phoneCount": ws_manager.get_phone_count(session_id),
-        }
-    })
-
     try:
+        # Send initial session state
+        await websocket.send_json({
+            "type": "kiosk_connected",
+            "data": {
+                "sessionId": session_id,
+                "phoneCount": ws_manager.get_phone_count(session_id),
+            }
+        })
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
@@ -133,40 +132,39 @@ async def phone_websocket(
 
     phone_id = await ws_manager.connect_phone(websocket, session_id)
 
-    # Send current session state
-    async with async_session_maker() as db:
-        from app.models.photo import Photo
-        from app.services import get_storage_service
-
-        photos_result = await db.execute(
-            select(Photo)
-            .where(Photo.session_id == session_id)
-            .order_by(Photo.sequence)
-        )
-        photos = photos_result.scalars().all()
-
-        storage = get_storage_service()
-        photo_data = [
-            {
-                "id": p.id,
-                "sequence": p.sequence,
-                "webUrl": storage.get_photo_url(p.web_path),
-                "thumbnailUrl": storage.get_photo_url(p.thumbnail_path),
-            }
-            for p in photos
-        ]
-
-    await websocket.send_json({
-        "type": "session_state",
-        "data": {
-            "sessionId": session_id,
-            "phoneId": phone_id,
-            "photos": photo_data,
-            "kioskConnected": ws_manager.has_kiosk(session_id),
-        }
-    })
-
     try:
+        # Send current session state
+        async with async_session_maker() as db:
+            from app.models.photo import Photo
+            from app.services import get_storage_service
+
+            photos_result = await db.execute(
+                select(Photo)
+                .where(Photo.session_id == session_id)
+                .order_by(Photo.sequence)
+            )
+            photos = photos_result.scalars().all()
+
+            storage = get_storage_service()
+            photo_data = [
+                {
+                    "id": p.id,
+                    "sequence": p.sequence,
+                    "webUrl": storage.get_photo_url(p.web_path),
+                    "thumbnailUrl": storage.get_photo_url(p.thumbnail_path),
+                }
+                for p in photos
+            ]
+
+        await websocket.send_json({
+            "type": "session_state",
+            "data": {
+                "sessionId": session_id,
+                "phoneId": phone_id,
+                "photos": photo_data,
+                "kioskConnected": ws_manager.has_kiosk(session_id),
+            }
+        })
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)

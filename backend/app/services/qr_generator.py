@@ -43,7 +43,6 @@ def generate_qr_code(url: str, size: int = 256) -> bytes:
     return output.getvalue()
 
 
-@lru_cache(maxsize=10)
 def generate_wifi_qr_code(ssid: str, password: str, size: int = 256) -> bytes:
     """
     Generate a QR code for WiFi connection.

@@ -56,7 +56,7 @@ app.include_router(captive_router)
 app.mount("/photos", StaticFiles(directory=settings.photos_dir), name="photos")
 
 # Check if mobile app build exists and serve it
-mobile_dist = Path(__file__).parent.parent.parent / "mobile" / "dist"
+mobile_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
 if mobile_dist.exists():
     # Serve mobile app static files
     app.mount("/assets", StaticFiles(directory=mobile_dist / "assets"), name="mobile-assets")

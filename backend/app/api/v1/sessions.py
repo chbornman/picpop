@@ -21,20 +21,42 @@ from app.schemas import (
 )
 from app.services import get_storage_service, generate_qr_code, generate_wifi_qr_code, ws_manager
 from app.services.storage import generate_photo_strip
-from app.services.camera import create_camera, CameraError
+from app.services.camera import get_shared_camera, get_capture_lock, CameraError
 
 router = APIRouter()
 
-# Global camera instance
-_camera = None
+
+@router.get("/wifi-qr")
+async def get_global_wifi_qr_code(size: int = 256) -> Response:
+    """Get QR code for WiFi connection (no session required)."""
+    qr_image = generate_wifi_qr_code(
+        settings.wifi_ssid,
+        settings.wifi_password,
+        size=min(size, 512)
+    )
+
+    return Response(
+        content=qr_image,
+        media_type="image/png",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
-def get_camera():
-    """Get or create camera instance."""
-    global _camera
-    if _camera is None:
-        _camera = create_camera(settings.camera_backend)
-    return _camera
+@router.get("/wifi-qr/debug")
+async def debug_wifi_qr() -> dict:
+    """Debug endpoint to see WiFi QR code data."""
+    password = settings.wifi_password
+    ssid = settings.wifi_ssid
+    if password:
+        wifi_string = f"WIFI:T:WPA;S:{ssid};P:{password};;"
+    else:
+        wifi_string = f"WIFI:S:{ssid};;"
+    return {
+        "ssid": ssid,
+        "password": password,
+        "has_password": bool(password),
+        "wifi_string": wifi_string,
+    }
 
 
 @router.post("", response_model=CreateSessionResponse)
@@ -342,6 +364,16 @@ async def capture_photos(
             detail="Camera is busy with another session",
         )
 
+    # Check camera BEFORE starting countdown
+    camera = get_shared_camera(settings.camera_backend)
+    if not await camera.is_connected():
+        connected = await camera.connect()
+        if not connected:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Camera not available",
+            )
+
     # Start countdown
     session.status = SessionStatus.COUNTDOWN.value
     await db.commit()
@@ -360,64 +392,55 @@ async def capture_photos(
     session.status = SessionStatus.CAPTURING.value
     await db.commit()
 
-    # Get camera
-    camera = get_camera()
-    if not await camera.is_connected():
-        connected = await camera.connect()
-        if not connected:
-            session.status = SessionStatus.ACTIVE.value
-            await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Camera not available",
-            )
-
     storage = get_storage_service()
     photos_captured = []
+    capture_lock = get_capture_lock()
 
     try:
-        for i in range(settings.photos_per_capture):
-            sequence = session.photo_count + 1
+        # Acquire capture lock to pause preview stream during capture
+        async with capture_lock:
+            for i in range(settings.photos_per_capture):
+                sequence = session.photo_count + 1
 
-            # Capture
-            original_filename = f"{session_id}_{sequence:02d}_original.jpg"
-            original_path = settings.photos_dir / session_id / original_filename
+                # Capture
+                original_filename = f"{session_id}_{sequence:02d}_original.jpg"
+                original_path = settings.photos_dir / session_id / original_filename
 
-            await camera.capture(original_path)
+                await camera.capture(original_path)
 
-            # Process and store
-            web_path, thumb_path = await storage.process_and_store(
-                original_path,
-                session_id,
-                sequence,
-                save_raw=settings.save_raw_images,
-            )
+                # Process and store
+                web_path, thumb_path = await storage.process_and_store(
+                    original_path,
+                    session_id,
+                    sequence,
+                    save_raw=settings.save_raw_images,
+                )
 
-            # Create photo record
-            photo = Photo(
-                session_id=session_id,
-                sequence=sequence,
-                web_path=web_path,
-                thumbnail_path=thumb_path,
-            )
-            db.add(photo)
-            session.photo_count = sequence
-            await db.commit()
-            await db.refresh(photo)
-            photos_captured.append(photo)
+                # Create photo record
+                photo = Photo(
+                    session_id=session_id,
+                    sequence=sequence,
+                    web_path=web_path,
+                    thumbnail_path=thumb_path,
+                )
+                db.add(photo)
+                session.photo_count = sequence
+                await db.commit()
+                await db.refresh(photo)
+                photos_captured.append(photo)
 
-            # Notify clients immediately
-            await ws_manager.send_photo_ready(
-                session_id,
-                photo.id,
-                photo.sequence,
-                storage.get_photo_url(photo.web_path),
-                storage.get_photo_url(photo.thumbnail_path),
-            )
+                # Notify clients immediately
+                await ws_manager.send_photo_ready(
+                    session_id,
+                    photo.id,
+                    photo.sequence,
+                    storage.get_photo_url(photo.web_path),
+                    storage.get_photo_url(photo.thumbnail_path),
+                )
 
-            # Delay between captures
-            if i < settings.photos_per_capture - 1:
-                await asyncio.sleep(settings.capture_delay_seconds)
+                # Delay between captures
+                if i < settings.photos_per_capture - 1:
+                    await asyncio.sleep(settings.capture_delay_seconds)
 
         session.status = SessionStatus.ACTIVE.value
         await db.commit()
@@ -430,6 +453,7 @@ async def capture_photos(
         await db.rollback()
         session.status = SessionStatus.ACTIVE.value
         await db.commit()
+        await ws_manager.send_capture_failed(session_id, f"Camera error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Capture failed: {e}",
@@ -438,6 +462,7 @@ async def capture_photos(
         await db.rollback()
         session.status = SessionStatus.ACTIVE.value
         await db.commit()
+        await ws_manager.send_capture_failed(session_id, f"Unexpected error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Unexpected error: {e}",

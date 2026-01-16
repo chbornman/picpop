@@ -27,7 +27,8 @@ apt install -y \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
     librsvg2-dev \
-    patchelf
+    patchelf \
+    iptables-persistent
 
 # Create picpop user
 echo "Creating picpop user..."
@@ -57,16 +58,16 @@ fi
 
 # Configure network interface
 echo "Configuring network interface..."
-cat > /etc/network/interfaces.d/wlan0 << EOF
-auto wlan0
-iface wlan0 inet static
+cat > /etc/network/interfaces.d/wlp2s0 << EOF
+auto wlp2s0
+iface wlp2s0 inet static
     address 192.168.4.1
     netmask 255.255.255.0
 EOF
 
 # Stop and disable default network management for wlan0
 systemctl stop NetworkManager 2>/dev/null || true
-nmcli device set wlan0 managed no 2>/dev/null || true
+nmcli device set wlp2s0 managed no 2>/dev/null || true
 
 # Install configuration files
 echo "Installing configuration files..."
@@ -101,10 +102,25 @@ systemctl enable picpop-kiosk
 
 # Start network services
 echo "Starting network services..."
-ifdown wlan0 2>/dev/null || true
-ifup wlan0
+ifdown wlp2s0 2>/dev/null || true
+ifup wlp2s0
 systemctl start hostapd
 systemctl start dnsmasq
+
+# Configure iptables for captive portal (redirect port 80 to 8000)
+echo "Configuring iptables for captive portal..."
+WIFI_INTERFACE=$(grep "^interface=" /etc/hostapd/hostapd.conf | cut -d= -f2)
+iptables -t nat -C PREROUTING -i "$WIFI_INTERFACE" -p tcp --dport 80 -j REDIRECT --to-port 8000 2>/dev/null || \
+    iptables -t nat -A PREROUTING -i "$WIFI_INTERFACE" -p tcp --dport 80 -j REDIRECT --to-port 8000
+# Save iptables rules
+netfilter-persistent save
+
+# Configure lid switch to prevent suspend (for kiosk mode)
+echo "Configuring lid switch behavior..."
+sed -i 's/#HandleLidSwitch=suspend/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
+sed -i 's/#HandleLidSwitchExternalPower=suspend/HandleLidSwitchExternalPower=ignore/' /etc/systemd/logind.conf
+sed -i 's/#HandleLidSwitchDocked=ignore/HandleLidSwitchDocked=ignore/' /etc/systemd/logind.conf
+systemctl restart systemd-logind
 
 echo ""
 echo "=== Setup Complete ==="
@@ -119,6 +135,10 @@ echo "  systemctl status picpop-kiosk"
 echo ""
 echo "WiFi Network: PicPop"
 echo "WiFi Password: photobooth"
-echo "Server URL: http://192.168.4.1:8000"
+echo "Server URL: http://192.168.4.1 (redirects to :8000)"
+echo ""
+echo "Configuration applied:"
+echo "  - Port 80 -> 8000 redirect (captive portal)"
+echo "  - Lid switch suspend disabled (kiosk mode)"
 echo ""
 echo "Reboot recommended: sudo reboot"

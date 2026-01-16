@@ -10,8 +10,17 @@ export function useWebSocket(
   const reconnectTimeoutRef = useRef<number | null>(null);
   const pingIntervalRef = useRef<number | null>(null);
 
+  // Use a ref for onMessage so we don't reconnect when handler changes
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+
   const connect = useCallback(() => {
     if (!sessionId) return;
+
+    // Don't reconnect if already connected
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
 
     // Determine WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -41,7 +50,7 @@ export function useWebSocket(
         console.log('WebSocket message:', message);
 
         if (message.type !== 'pong') {
-          onMessage(message);
+          onMessageRef.current(message);
         }
       } catch (e) {
         console.error('Failed to parse WebSocket message:', e);
@@ -51,6 +60,7 @@ export function useWebSocket(
     ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason);
       setIsConnected(false);
+      wsRef.current = null;
 
       // Clear ping interval
       if (pingIntervalRef.current) {
@@ -69,7 +79,7 @@ export function useWebSocket(
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  }, [sessionId, onMessage]);
+  }, [sessionId]);
 
   useEffect(() => {
     connect();

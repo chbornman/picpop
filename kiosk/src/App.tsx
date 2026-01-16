@@ -1,38 +1,40 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { IdleScreen } from './components/IdleScreen';
+import { WelcomeScreen } from './components/WelcomeScreen';
 import { SessionScreen } from './components/SessionScreen';
 import { CountdownOverlay } from './components/CountdownOverlay';
-import { PhotoStripPreview } from './components/PhotoStripPreview';
 
 const API_BASE = 'http://localhost:8000';
 const WS_BASE = 'ws://localhost:8000';
 
-type KioskState = 'idle' | 'session' | 'capturing' | 'reviewing';
+type KioskState = 'welcome' | 'session' | 'capturing';
 
 interface SessionData {
   id: string;
-  qrCodeUrl: string;
-  wifiQrUrl: string;
   phoneCount: number;
 }
 
 interface Photo {
   id: string;
-  sequence: number;
-  url: string;
   thumbnailUrl: string;
+  webUrl: string;
 }
 
 export default function App() {
-  const [state, setState] = useState<KioskState>('idle');
+  const [state, setState] = useState<KioskState>('welcome');
   const [session, setSession] = useState<SessionData | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [stripUrl, setStripUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // WiFi QR URL (doesn't require a session)
+  const wifiQrUrl = `${API_BASE}/api/v1/sessions/wifi-qr?size=512`;
+
+  // Camera preview URL (MJPEG stream) - 30fps default, use ?fps=60 for higher
+  const previewUrl = `${API_BASE}/api/v1/camera/preview?fps=30`;
 
   // Connect to WebSocket for session
   const connectWebSocket = useCallback((sessionId: string) => {
@@ -96,17 +98,27 @@ export default function App() {
 
       case 'photo_ready':
         setPhotos(prev => [...prev, {
-          id: message.data.photoId,
-          sequence: message.data.sequence,
-          url: message.data.webUrl,
-          thumbnailUrl: message.data.thumbnailUrl,
+          id: message.data.id,
+          thumbnailUrl: message.data.thumbnailUrl.startsWith('/')
+            ? `${API_BASE}${message.data.thumbnailUrl}`
+            : message.data.thumbnailUrl,
+          webUrl: message.data.webUrl.startsWith('/')
+            ? `${API_BASE}${message.data.webUrl}`
+            : message.data.webUrl,
         }]);
         break;
 
       case 'capture_complete':
-        setStripUrl(message.data?.stripUrl ?? null);
-        setState('reviewing');
+        setState('session');
         setCountdown(null);
+        break;
+
+      case 'capture_failed':
+        setState('session');
+        setCountdown(null);
+        setError(message.data?.error || 'Capture failed');
+        // Auto-clear error after 5 seconds
+        setTimeout(() => setError(null), 5000);
         break;
 
       case 'session_ended':
@@ -115,10 +127,12 @@ export default function App() {
     }
   };
 
-  // Create new session
-  const createSession = async () => {
+  // Start new session
+  const startSession = async () => {
     try {
       setError(null);
+      setIsStarting(true);
+
       const response = await fetch(`${API_BASE}/api/v1/sessions`, {
         method: 'POST',
       });
@@ -131,19 +145,18 @@ export default function App() {
 
       setSession({
         id: data.id,
-        qrCodeUrl: `${API_BASE}${data.qrCodeUrl}`,
-        wifiQrUrl: `${API_BASE}/api/v1/sessions/${data.id}/wifi-qr`,
         phoneCount: 0,
       });
 
       setPhotos([]);
-      setStripUrl(null);
       setState('session');
 
       connectWebSocket(data.id);
     } catch (e) {
       console.error('Failed to create session:', e);
-      setError('Failed to create session. Is the server running?');
+      setError('Failed to start session. Is the server running?');
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -152,27 +165,24 @@ export default function App() {
     if (!session) return;
 
     try {
-      setPhotos([]);
       const response = await fetch(
         `${API_BASE}/api/v1/sessions/${session.id}/capture`,
         { method: 'POST' }
       );
 
       if (!response.ok) {
-        throw new Error('Failed to start capture');
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to start capture');
       }
     } catch (e) {
       console.error('Failed to start capture:', e);
-      setError('Failed to start capture');
+      const errorMsg = e instanceof Error ? e.message : 'Failed to start capture';
+      setError(errorMsg);
       setState('session');
+      setCountdown(null);
+      // Auto-clear error after 5 seconds
+      setTimeout(() => setError(null), 5000);
     }
-  };
-
-  // Take more photos (reset to session state)
-  const takeMore = () => {
-    setPhotos([]);
-    setStripUrl(null);
-    setState('session');
   };
 
   // End current session
@@ -198,9 +208,8 @@ export default function App() {
 
     setSession(null);
     setPhotos([]);
-    setStripUrl(null);
     setCountdown(null);
-    setState('idle');
+    setState('welcome');
   };
 
   // Cleanup on unmount
@@ -222,24 +231,23 @@ export default function App() {
 
       {/* Main content */}
       <div className="relative z-10 w-full h-full">
-        {state === 'idle' && (
-          <IdleScreen onStart={createSession} error={error} />
+        {state === 'welcome' && (
+          <WelcomeScreen
+            onStart={startSession}
+            isLoading={isStarting}
+            previewUrl={previewUrl}
+          />
         )}
 
         {(state === 'session' || state === 'capturing') && session && (
           <SessionScreen
-            session={session}
-            onCapture={startCapture}
-            onEnd={endSession}
-            isCapturing={state === 'capturing'}
-          />
-        )}
-
-        {state === 'reviewing' && session && (
-          <PhotoStripPreview
+            wifiQrUrl={wifiQrUrl}
+            sessionQrUrl={`${API_BASE}/api/v1/sessions/${session.id}/qr?size=512`}
+            previewUrl={previewUrl}
+            phoneCount={session.phoneCount}
             photos={photos}
-            stripUrl={stripUrl}
-            onTakeMore={takeMore}
+            isCapturing={state === 'capturing'}
+            onCapture={startCapture}
             onEnd={endSession}
           />
         )}
@@ -251,7 +259,7 @@ export default function App() {
       )}
 
       {/* Error toast */}
-      {error && state !== 'idle' && (
+      {error && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-3 rounded-full text-lg">
           {error}
         </div>
