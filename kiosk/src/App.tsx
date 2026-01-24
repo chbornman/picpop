@@ -28,7 +28,7 @@ export default function App() {
   const [isStarting, setIsStarting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // WiFi QR URL (doesn't require a session)
   const wifiQrUrl = `${API_BASE}/api/v1/sessions/wifi-qr?size=512`;
