@@ -43,8 +43,8 @@ export function WelcomeScreen({ onStart, isLoading, previewUrl }: WelcomeScreenP
         ) : (
           <div className="w-full h-full bg-bg-dark" />
         )}
-        {/* Gradient overlay for readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/60" />
+        {/* Gradient overlay disabled for FPS testing */}
+        {/* <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/60" /> */}
       </div>
 
       {/* Branding overlay */}

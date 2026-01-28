@@ -119,11 +119,10 @@ class GPhoto2Camera(Camera):
                 return save_path
 
             except gp.GPhoto2Error as e:
-                logger.error(f"Capture failed: {e}")
-                # Reset camera on certain errors
-                if any(code in str(e) for code in ["-10", "-53", "-105", "-6"]):
-                    self._camera = None
-                    self._context = None
+                # Reset on any gphoto2 error - camera may be disconnected
+                logger.error(f"Capture failed, resetting camera: {e}")
+                self._camera = None
+                self._context = None
                 raise CaptureError(f"Capture failed: {e}")
 
     async def get_preview_frame(self) -> bytes:
@@ -139,9 +138,10 @@ class GPhoto2Camera(Camera):
                 return bytes(data)
 
             except gp.GPhoto2Error as e:
-                if any(code in str(e) for code in ["-10", "-53", "-105", "-6"]):
-                    self._camera = None
-                    self._context = None
+                # Reset on any gphoto2 error - camera may be disconnected
+                logger.warning(f"Preview error, resetting camera: {e}")
+                self._camera = None
+                self._context = None
                 raise CaptureError(f"Preview failed: {e}")
 
     def is_connected(self) -> bool:
