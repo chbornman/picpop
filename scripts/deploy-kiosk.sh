@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Configuration
 RADXA_HOST="${RADXA_HOST:-kiosk@192.168.0.110}"
 REMOTE_PATH="/opt/picpop/kiosk"
@@ -41,6 +43,11 @@ scp "$LOCAL_BINARY" "$RADXA_HOST:$REMOTE_PATH/picpop-kiosk"
 
 # Make executable
 ssh "$RADXA_HOST" "chmod +x $REMOTE_PATH/picpop-kiosk"
+
+# Deploy service file
+log "Deploying service file..."
+scp "$(dirname "$SCRIPT_DIR")/deploy/picpop-kiosk.service" "$RADXA_HOST:/tmp/picpop-kiosk.service"
+ssh "$RADXA_HOST" "sudo cp /tmp/picpop-kiosk.service /etc/systemd/system/ && sudo systemctl daemon-reload"
 
 # Restart the service
 log "Starting picpop-kiosk service..."

@@ -74,6 +74,11 @@ ssh "$RADXA_HOST" "cd $REMOTE_PATH && \
 log "Fixing data directory permissions..."
 ssh "$RADXA_HOST" "sudo mkdir -p $REMOTE_PATH/data && sudo chown -R \$(whoami) $REMOTE_PATH/data"
 
+# Deploy service file
+log "Deploying service file..."
+scp "$PROJECT_ROOT/deploy/picpop.service" "$RADXA_HOST:/tmp/picpop.service"
+ssh "$RADXA_HOST" "sudo cp /tmp/picpop.service /etc/systemd/system/ && sudo systemctl daemon-reload"
+
 # Restart the service
 log "Starting picpop service..."
 ssh "$RADXA_HOST" "sudo systemctl start picpop"

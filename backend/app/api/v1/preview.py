@@ -27,42 +27,49 @@ async def mjpeg_stream(fps: int = 30) -> AsyncGenerator[bytes, None]:
 
     logger.info(f"Starting preview stream at {fps} fps")
 
-    while True:
-        # Wait if capture is happening
-        await wait_if_paused()
+    try:
+        while True:
+            # Wait if capture is happening
+            await wait_if_paused()
 
-        # Connect if needed
-        if not camera.is_connected():
-            connected = await camera.connect()
-            if not connected:
-                await asyncio.sleep(1.0)
-                continue
+            # Connect if needed
+            if not camera.is_connected():
+                connected = await camera.connect()
+                if not connected:
+                    await asyncio.sleep(1.0)
+                    continue
 
-        try:
-            frame = await camera.get_preview_frame()
-            frame_count += 1
+            try:
+                frame = await camera.get_preview_frame()
+                frame_count += 1
 
-            if frame_count == 1:
-                logger.info("First preview frame captured")
-            elif frame_count % 300 == 0:
-                logger.debug(f"Preview: {frame_count} frames")
+                if frame_count == 1:
+                    logger.info("First preview frame captured")
+                elif frame_count % 300 == 0:
+                    logger.debug(f"Preview: {frame_count} frames")
 
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n"
-                b"Content-Length: " + str(len(frame)).encode() + b"\r\n"
-                b"\r\n" + frame + b"\r\n"
-            )
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(frame)).encode() + b"\r\n"
+                    b"\r\n" + frame + b"\r\n"
+                )
 
-            if frame_interval > 0:
-                await asyncio.sleep(frame_interval)
+                if frame_interval > 0:
+                    await asyncio.sleep(frame_interval)
 
-        except CameraError as e:
-            logger.warning(f"Preview frame error: {e}")
-            await asyncio.sleep(0.5)
-        except Exception as e:
-            logger.error(f"Unexpected preview error: {e}")
-            await asyncio.sleep(0.1)
+            except CameraError as e:
+                logger.warning(f"Preview frame error: {e}")
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Unexpected preview error: {e}")
+                await asyncio.sleep(0.1)
+
+    except asyncio.CancelledError:
+        logger.info(f"Preview stream cancelled after {frame_count} frames")
+        raise  # Re-raise to properly clean up
+    finally:
+        logger.info("Preview stream ended")
 
 
 @router.get("/preview")

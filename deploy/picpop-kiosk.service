@@ -15,10 +15,15 @@ Group=kiosk
 # XDG runtime directory (required for Wayland)
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 
-# WebKitGTK workarounds for Wayland/wlroots stability
-Environment="WEBKIT_DISABLE_COMPOSITING_MODE=1"
-Environment="WEBKIT_DISABLE_DMABUF_RENDERER=1"
+# WebKitGTK GPU compositing (try enabling for better performance)
+# Uncomment these if GPU causes crashes/glitches:
+# Environment="WEBKIT_DISABLE_COMPOSITING_MODE=1"
+# Environment="WEBKIT_DISABLE_DMABUF_RENDERER=1"
 Environment="GDK_BACKEND=wayland"
+
+# Mali GPU hints
+Environment="MESA_GL_VERSION_OVERRIDE=3.3"
+Environment="MESA_GLSL_VERSION_OVERRIDE=330"
 
 # Hide cursor using invisible cursor theme
 Environment="XCURSOR_THEME=InvisibleCursor"
