@@ -17,7 +17,7 @@ warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[x]${NC} $1"; exit 1; }
 
 # Configuration
-RADXA_HOST="${RADXA_HOST:-picpop@192.168.0.110}"
+RADXA_HOST="${RADXA_HOST:-kiosk@192.168.0.110}"
 
 # Check for required system dependencies (local build only)
 check_deps() {

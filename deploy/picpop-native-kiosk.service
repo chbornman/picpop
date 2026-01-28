@@ -1,12 +1,12 @@
 [Unit]
 Description=PicPop Native Kiosk (GTK4)
-After=network.target picpop-backend.service
-Wants=picpop-backend.service
+After=network.target picpop.service
+Wants=picpop.service
 
 [Service]
 Type=simple
-User=picpop
-Group=picpop
+User=kiosk
+Group=kiosk
 Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=/run/user/1000
@@ -16,7 +16,7 @@ Environment=RUST_LOG=info
 # Wait for backend to be ready
 ExecStartPre=/bin/sleep 2
 
-ExecStart=/home/picpop/picpop-kiosk
+ExecStart=/home/kiosk/picpop-kiosk
 Restart=always
 RestartSec=3
 

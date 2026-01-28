@@ -7,7 +7,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SERVICE_FILE="$PROJECT_DIR/deploy/picpop-native-kiosk.service"
 
 # Configuration
-RADXA_HOST="${RADXA_HOST:-picpop@192.168.0.110}"
+RADXA_HOST="${RADXA_HOST:-kiosk@192.168.0.110}"
 
 # Colors
 RED='\033[0;31m'
@@ -36,7 +36,7 @@ ssh "$RADXA_HOST" "sudo systemctl stop picpop-native-kiosk 2>/dev/null || true"
 
 # Copy binary to final location
 log "Installing binary..."
-ssh "$RADXA_HOST" "sudo cp ~/kiosk-native/target/release/picpop-kiosk /home/picpop/picpop-kiosk && sudo chown picpop:picpop /home/picpop/picpop-kiosk && sudo chmod +x /home/picpop/picpop-kiosk"
+ssh "$RADXA_HOST" "sudo cp ~/kiosk-native/target/release/picpop-kiosk /home/kiosk/picpop-kiosk && sudo chown kiosk:kiosk /home/kiosk/picpop-kiosk && sudo chmod +x /home/kiosk/picpop-kiosk"
 
 # Deploy service file
 log "Deploying service file..."
