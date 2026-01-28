@@ -215,7 +215,7 @@ export function SessionScreen({
 
       {/* Lightbox */}
       {viewingIndex !== null && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col" style={{ touchAction: 'pinch-zoom pan-x pan-y' }}>
           {/* Lightbox header */}
           <div className="flex-none p-6 flex items-center justify-between">
             <span className="text-white/70 text-xl">

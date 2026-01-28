@@ -9,8 +9,8 @@ Wants=dbus.socket systemd-logind.service picpop.service
 
 [Service]
 Type=simple
-User=picpop
-Group=picpop
+User=kiosk
+Group=kiosk
 
 # XDG runtime directory (required for Wayland)
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
@@ -20,13 +20,18 @@ Environment="WEBKIT_DISABLE_COMPOSITING_MODE=1"
 Environment="WEBKIT_DISABLE_DMABUF_RENDERER=1"
 Environment="GDK_BACKEND=wayland"
 
+# Hide cursor using invisible cursor theme
+Environment="XCURSOR_THEME=InvisibleCursor"
+Environment="XCURSOR_SIZE=1"
+Environment="XCURSOR_PATH=/home/kiosk/.local/share/icons"
+
 # Workaround for cursor issues on some ARM GPUs
 Environment="WLR_NO_HARDWARE_CURSORS=1"
 
 WorkingDirectory=/opt/picpop/kiosk
 
 # Launch Cage with the Tauri app (dbus-run-session prevents GTK startup delays)
-ExecStart=/usr/bin/dbus-run-session /usr/bin/cage /opt/picpop/kiosk/picpop-kiosk
+ExecStart=/usr/bin/dbus-run-session /opt/picpop/kiosk/start-kiosk.sh
 
 # Restart on failure
 Restart=always
