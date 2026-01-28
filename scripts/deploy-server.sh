@@ -57,12 +57,18 @@ log "Syncing frontend..."
 rsync -avz --delete \
     frontend/dist/ "$RADXA_HOST:$REMOTE_PATH/frontend/dist/"
 
-# Install/update Python dependencies
-log "Installing Python dependencies..."
+# Install/update Python dependencies (only if pyproject.toml changed)
+log "Checking Python dependencies..."
 ssh "$RADXA_HOST" "cd $REMOTE_PATH && \
     python3 -m venv .venv 2>/dev/null || true && \
-    .venv/bin/pip install -q --upgrade pip && \
-    .venv/bin/pip install -q -e ."
+    if ! cmp -s pyproject.toml .venv/.pyproject.toml.cache 2>/dev/null; then \
+        echo 'Dependencies changed, installing...' && \
+        .venv/bin/pip install -q --upgrade pip && \
+        .venv/bin/pip install -q -e . && \
+        cp pyproject.toml .venv/.pyproject.toml.cache; \
+    else \
+        echo 'Dependencies unchanged, skipping'; \
+    fi"
 
 # Ensure data directory has correct permissions
 log "Fixing data directory permissions..."
