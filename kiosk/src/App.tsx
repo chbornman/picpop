@@ -34,7 +34,8 @@ export default function App() {
   const wifiQrUrl = `${API_BASE}/api/v1/sessions/wifi-qr?size=512`;
 
   // Camera preview URL (MJPEG stream)
-  const previewUrl = `${API_BASE}/api/v1/camera/preview?fps=30`;
+  // Lower FPS reduces CPU load from JPEG decoding on ARM
+  const previewUrl = `${API_BASE}/api/v1/camera/preview?fps=10`;
 
   // Connect to WebSocket for session
   const connectWebSocket = useCallback((sessionId: string) => {
