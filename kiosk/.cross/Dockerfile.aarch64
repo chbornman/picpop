@@ -1,0 +1,63 @@
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base build tools and Rust
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    build-essential \
+    pkg-config \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Add aarch64 target
+RUN rustup target add aarch64-unknown-linux-gnu
+
+# Install bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+# Install tauri-cli
+RUN cargo install tauri-cli
+
+# Add arm64 architecture and configure sources for multiarch
+RUN dpkg --add-architecture arm64
+
+# Configure apt sources for multiarch (amd64 from archive, arm64 from ports)
+# Using us.ports for potentially faster speeds
+RUN echo "deb [arch=amd64] http://us.archive.ubuntu.com/ubuntu jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb [arch=amd64] http://us.archive.ubuntu.com/ubuntu jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb [arch=amd64] http://us.archive.ubuntu.com/ubuntu jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb [arch=arm64] http://us.ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb [arch=arm64] http://us.ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb [arch=arm64] http://us.ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" >> /etc/apt/sources.list
+
+# Install cross-compiler and Tauri dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    libc6-dev-arm64-cross \
+    libwebkit2gtk-4.1-dev:arm64 \
+    libgtk-3-dev:arm64 \
+    libayatana-appindicator3-dev:arm64 \
+    librsvg2-dev:arm64 \
+    libssl-dev:arm64 \
+    libjavascriptcoregtk-4.1-dev:arm64 \
+    libsoup-3.0-dev:arm64 \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set pkg-config to find aarch64 libraries
+ENV PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+ENV PKG_CONFIG_SYSROOT_DIR=/
+ENV PKG_CONFIG_ALLOW_CROSS=1
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+ENV CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
