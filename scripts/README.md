@@ -91,6 +91,16 @@ Deploys built artifacts to the Radxa device.
 ./scripts/deploy.sh --on-radxa   # Deploy binary built on device
 ```
 
+### `rebuild-docker.sh`
+
+Rebuilds Docker cross-compilation images. Use after updating Dockerfiles.
+
+```bash
+./scripts/rebuild-docker.sh              # Rebuild cross image (default)
+./scripts/rebuild-docker.sh --qemu       # Rebuild QEMU image
+./scripts/rebuild-docker.sh --all        # Rebuild both
+```
+
 ## Build Modes
 
 ### Cross-compilation (Default)
@@ -135,6 +145,7 @@ scripts/
 ├── build-server.sh       # Build React frontend
 ├── build-kiosk.sh        # Build Rust kiosk
 ├── deploy.sh             # Deploy to Radxa
+├── rebuild-docker.sh     # Rebuild Docker images
 ├── common.sh             # Shared utilities
 ├── README.md             # This file
 └── docker/
@@ -158,6 +169,16 @@ Use QEMU mode: `./scripts/build-kiosk.sh --qemu`
 Install Docker or Podman. Scripts auto-detect which is available.
 
 ### Rebuild Docker images
+
+After updating Dockerfiles (e.g., adding new dependencies like libadwaita):
+
+```bash
+./scripts/rebuild-docker.sh              # Rebuild cross-compile image
+./scripts/rebuild-docker.sh --qemu       # Rebuild QEMU image
+./scripts/rebuild-docker.sh --all        # Rebuild both
+```
+
+Or manually:
 
 ```bash
 docker build --no-cache -t picpop-cross-aarch64 -f scripts/docker/Dockerfile.cross scripts/docker/

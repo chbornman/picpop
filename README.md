@@ -171,7 +171,9 @@ picpop/
 
 ### Kiosk Display
 
-- **Native GTK4** application with GStreamer
+- **Native GTK4 + Libadwaita** application with GStreamer
+- Smooth animations throughout (libadwaita TimedAnimation)
+- Inter font for modern typography
 - Fullscreen, no window decorations
 - Touch-optimized UI with large buttons
 - Connects to local FastAPI server via WebSocket
@@ -294,8 +296,9 @@ For maximum compatibility, we display a two-step QR:
 - Rust (for native kiosk)
 - Node.js 20+ / Bun 1.x
 - Python 3.11+
-- GTK4 and GStreamer development libraries
+- GTK4, Libadwaita, and GStreamer development libraries
 - gphoto2 libraries (`libgphoto2-dev`)
+- Inter font (`fonts-inter` on Debian/Ubuntu)
 
 ### Setup
 
