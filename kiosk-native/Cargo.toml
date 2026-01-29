@@ -14,6 +14,9 @@ description = "Native GTK4 kiosk for PicPop photo booth"
 #   - GLib: 2.86.3
 #   - Libadwaita: 1.8.3
 #
+# Build system (Docker / Debian Trixie):
+#   - Libadwaita: 1.7.6 (use v1_6 feature for cross-compile compatibility)
+#
 # Rust crate version mapping:
 #   - gtk4 0.10.x requires gtk4-sys 0.10.x (GTK4 4.x)
 #   - libadwaita 0.8.x requires gtk4 0.10.x
@@ -22,7 +25,7 @@ description = "Native GTK4 kiosk for PicPop photo booth"
 gtk4 = { version = "0.10", features = ["v4_12"] }
 glib = "0.21"
 gio = "0.21"
-libadwaita = { version = "0.8", features = ["v1_8"] }
+libadwaita = { version = "0.8", features = ["v1_6"] }
 
 # =============================================================================
 # GStreamer
