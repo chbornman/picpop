@@ -503,10 +503,16 @@ async def capture_photos(
                     },
                 )
 
-                # Try to reconnect for next photo
+                # Try to reconnect for next photo - wait for USB to settle first
                 if not camera.is_connected():
+                    logger.info(f"[CAPTURE] Waiting 1s for USB to settle before reconnect...")
+                    await asyncio.sleep(1.0)
                     logger.info(f"[CAPTURE] Attempting camera reconnect for remaining photos...")
                     await camera.connect()
+
+            # Give camera time to settle before next capture (except after last photo)
+            if not is_last_photo:
+                await asyncio.sleep(1.0)
 
             # After last photo, signal we're processing remaining photos
             if is_last_photo and processing_tasks:

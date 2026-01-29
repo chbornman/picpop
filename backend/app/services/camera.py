@@ -179,6 +179,14 @@ class GPhoto2Camera(Camera):
                 _camera_stats.last_error_time = time.time()
                 logger.error(f"[CAMERA] Capture failed, resetting camera: {e}")
                 _camera_stats.log_summary()
+
+                # Properly exit the camera to release USB device
+                if self._camera:
+                    try:
+                        await asyncio.to_thread(self._camera.exit, self._context)
+                    except Exception as exit_err:
+                        logger.debug(f"[CAMERA] Exit during reset failed (expected): {exit_err}")
+
                 self._camera = None
                 self._context = None
                 raise CaptureError(f"Capture failed: {e}")
@@ -210,6 +218,14 @@ class GPhoto2Camera(Camera):
                 _camera_stats.last_error_time = time.time()
                 logger.warning(f"[CAMERA] Preview error, resetting camera: {e}")
                 _camera_stats.log_summary()
+
+                # Properly exit the camera to release USB device
+                if self._camera:
+                    try:
+                        await asyncio.to_thread(self._camera.exit, self._context)
+                    except Exception as exit_err:
+                        logger.debug(f"[CAMERA] Exit during reset failed (expected): {exit_err}")
+
                 self._camera = None
                 self._context = None
                 raise CaptureError(f"Preview failed: {e}")
