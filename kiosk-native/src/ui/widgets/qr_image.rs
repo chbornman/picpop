@@ -88,14 +88,12 @@ impl ExpandableQrPanel {
         session_qr.set_vexpand(false);
         session_qr.add_css_class("qr-image");
 
-        // Labels (hidden when collapsed)
+        // Labels (always visible)
         let wifi_label = gtk::Label::new(Some("WiFi"));
         wifi_label.add_css_class("qr-label-small");
-        wifi_label.set_visible(false);
 
         let session_label = gtk::Label::new(Some("Photos"));
         session_label.add_css_class("qr-label-small");
-        session_label.set_visible(false);
 
         // WiFi section
         let wifi_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -160,11 +158,7 @@ impl ExpandableQrPanel {
             );
         }
 
-        // Show/hide labels
-        self.wifi_label.set_visible(expanded);
-        if self.session_box.is_visible() {
-            self.session_label.set_visible(expanded);
-        }
+        // Labels are always visible now, no need to toggle
 
         // Update CSS class
         if expanded {
@@ -188,7 +182,6 @@ impl ExpandableQrPanel {
 
         load_image_into_picture(ctx, &config::session_qr_url(session_id, size), &self.session_qr);
         self.session_box.set_visible(true);
-        self.session_label.set_visible(self.is_expanded.get());
     }
 
     /// Hide the session QR
