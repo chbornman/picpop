@@ -38,16 +38,18 @@ export function CountdownScreen({ value, photoNumber = 1, totalPhotos = 1 }: Cou
 
   return (
     <div className="h-full flex flex-col items-center justify-center">
-      {/* Photo indicator - show which photo we're on */}
+      {/* Photo indicator - show which photo we're on (e.g., 1/3) */}
       {totalPhotos > 1 && (
         <motion.div
           key={`photo-${photoNumber}`}
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="mb-4"
+          initial={{ y: -20, opacity: 0, scale: 0.8 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          className="mb-6 px-5 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20"
         >
-          <span className="text-white/70 text-lg font-medium">
-            Photo {photoNumber} of {totalPhotos}
+          <span className="text-white text-xl font-semibold tracking-wide">
+            {photoNumber}
+            <span className="text-white/50 mx-1">/</span>
+            {totalPhotos}
           </span>
         </motion.div>
       )}

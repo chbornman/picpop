@@ -13,7 +13,8 @@ pub const CAMERA_PREVIEW_URL: &str = "http://localhost:8000/api/v1/camera/previe
 /// Must be at least ~150px for reliable scanning of version 6 QR codes
 pub const QR_SIZE_SMALL: u32 = 150;
 /// QR code size in pixels (large, for expanded view)
-pub const QR_SIZE_LARGE: u32 = 280;
+/// Large enough to fill most of the screen for easy scanning
+pub const QR_SIZE_LARGE: u32 = 400;
 
 /// WebSocket reconnection delay in milliseconds
 pub const WS_RECONNECT_DELAY_MS: u64 = 2000;
