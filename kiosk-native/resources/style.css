@@ -155,32 +155,21 @@ window * {
 
 /* === QR Code Panel === */
 .qr-panel-small {
-  background-color: alpha(@bg-dark, 0.7);
+  background-color: alpha(@bg-dark, 0.8);
   border-radius: 12px;
   padding: 8px;
 }
 
 .qr-panel-expanded {
-  background-color: alpha(@bg-dark, 0.9);
-  border-radius: 16px;
-  padding: 16px;
-}
-
-.qr-clickable {
-  /* Visual feedback for clickable area */
-}
-
-.qr-label-small {
-  font-size: 10px;
-  font-weight: 600;
-  color: @text-secondary;
-  margin-top: 4px;
+  background-color: alpha(@bg-dark, 0.95);
+  border-radius: 24px;
+  padding: 24px;
 }
 
 .qr-image {
   background-color: white;
-  border-radius: 6px;
-  padding: 4px;
+  border-radius: 8px;
+  padding: 6px;
 }
 
 /* Legacy QR section styles (for any remaining uses) */

@@ -54,7 +54,7 @@ export function ProcessingScreen() {
       </div>
 
       {/* Animated dots text */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-baseline gap-1">
         <motion.span
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -62,20 +62,23 @@ export function ProcessingScreen() {
         >
           Processing
         </motion.span>
-        {[0, 1, 2].map((i) => (
-          <motion.span
-            key={i}
-            className="text-white text-2xl font-medium"
-            animate={{ opacity: [0, 1, 0] }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              delay: i * 0.3,
-            }}
-          >
-            .
-          </motion.span>
-        ))}
+        <div className="flex gap-[3px] ml-1">
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="text-white text-2xl font-medium"
+              animate={{ y: [0, -8, 0] }}
+              transition={{
+                duration: 0.6,
+                repeat: Infinity,
+                delay: i * 0.15,
+                ease: 'easeInOut',
+              }}
+            >
+              .
+            </motion.span>
+          ))}
+        </div>
       </div>
 
       {/* Subtitle */}
