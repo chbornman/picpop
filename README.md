@@ -64,9 +64,12 @@ A fully offline-capable interactive photo booth system designed for the **Radxa 
 ### 3. Photo Capture
 
 - User taps **"Take Photos"** button on the **touchscreen**
-- 3-2-1 countdown displayed on both screens
-- Camera captures 3 photos (1.5s delay between each)
-- Photos instantly stream to phone via WebSocket
+- For each photo (default 3):
+  - 3-2-1 countdown displayed on both screens
+  - Camera captures photo
+  - Processing starts immediately in background
+- "Processing..." shown after final capture while images finalize
+- Photos stream to phone via WebSocket as they're ready
 
 ### 4. Photo Retrieval
 
@@ -161,7 +164,10 @@ picpop/
 
 - **gphoto2** via `python-gphoto2` library
 - Supports Sony mirrorless cameras via USB PTP protocol
-- Capture → Download → Process → Store → Stream pipeline
+- Optimized capture pipeline:
+  - Countdown → Capture → Background Process (parallel) → Stream
+  - Image processing runs in thread pool (4 workers) for multi-core utilization
+  - Processing overlaps with next photo's countdown for faster capture sequences
 
 ### Kiosk Display
 
@@ -182,10 +188,13 @@ picpop/
 { type: "phone_connected", phoneId: string }
 
 // Countdown tick (sent to all clients)
-{ type: "countdown", value: number } // 3, 2, 1, 0
+{ type: "countdown", value: number, photoNumber: number, totalPhotos: number }
 
 // Photo captured and available
 { type: "photo_ready", photo: { id: string, url: string, thumbnailUrl: string } }
+
+// Photos being processed (shown after last capture)
+{ type: "processing", photoCount: number }
 
 // Capture sequence complete
 { type: "capture_complete", photoCount: number }
@@ -324,11 +333,11 @@ bun run build
 
 ### Deployed File Locations
 
-| Component            | Source                                            | Deployed Location    |
-| -------------------- | ------------------------------------------------- | -------------------- |
-| Backend (Python)     | `backend/`                                        | `/opt/picpop/`       |
-| Kiosk (GTK4 binary)  | `kiosk-native/target/release/picpop-kiosk`        | `/home/kiosk/`       |
-| Frontend (phone web) | `frontend/dist/`                                  | `/opt/mobile/dist/`  |
+| Component            | Source                                     | Deployed Location   |
+| -------------------- | ------------------------------------------ | ------------------- |
+| Backend (Python)     | `backend/`                                 | `/opt/picpop/`      |
+| Kiosk (GTK4 binary)  | `kiosk-native/target/release/picpop-kiosk` | `/home/kiosk/`      |
+| Frontend (phone web) | `frontend/dist/`                           | `/opt/mobile/dist/` |
 
 ### Initial Setup
 

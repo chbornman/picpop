@@ -8,6 +8,12 @@ from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
 
 
+# Use a fixed QR version for consistent visual appearance
+# Version 6 supports up to 134 alphanumeric chars with M error correction
+# This ensures both WiFi and URL QR codes look the same
+QR_VERSION = 6
+
+
 @lru_cache(maxsize=100)
 def generate_qr_code(url: str, size: int = 256) -> bytes:
     """
@@ -21,13 +27,13 @@ def generate_qr_code(url: str, size: int = 256) -> bytes:
         PNG image bytes
     """
     qr = qrcode.QRCode(
-        version=1,
+        version=QR_VERSION,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=10,
         border=2,
     )
     qr.add_data(url)
-    qr.make(fit=True)
+    qr.make(fit=False)  # Don't auto-fit, use fixed version
 
     img = qr.make_image(
         image_factory=StyledPilImage,
@@ -62,13 +68,13 @@ def generate_wifi_qr_code(ssid: str, password: str, size: int = 256) -> bytes:
     wifi_string = f"WIFI:T:WPA;S:{ssid};P:{password};;"
 
     qr = qrcode.QRCode(
-        version=1,
+        version=QR_VERSION,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=10,
         border=2,
     )
     qr.add_data(wifi_string)
-    qr.make(fit=True)
+    qr.make(fit=False)  # Don't auto-fit, use fixed version
 
     img = qr.make_image(
         image_factory=StyledPilImage,

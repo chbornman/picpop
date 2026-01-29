@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 
 interface CountdownScreenProps {
   value: number;
+  photoNumber?: number;
+  totalPhotos?: number;
 }
 
 // Vibrate for haptic feedback
@@ -24,7 +26,7 @@ const messages: Record<number, string> = {
   1: 'Smile!',
 };
 
-export function CountdownScreen({ value }: CountdownScreenProps) {
+export function CountdownScreen({ value, photoNumber = 1, totalPhotos = 1 }: CountdownScreenProps) {
   // Haptic feedback on each number
   useEffect(() => {
     if (value === 1) {
@@ -36,9 +38,23 @@ export function CountdownScreen({ value }: CountdownScreenProps) {
 
   return (
     <div className="h-full flex flex-col items-center justify-center">
+      {/* Photo indicator - show which photo we're on */}
+      {totalPhotos > 1 && (
+        <motion.div
+          key={`photo-${photoNumber}`}
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="mb-4"
+        >
+          <span className="text-white/70 text-lg font-medium">
+            Photo {photoNumber} of {totalPhotos}
+          </span>
+        </motion.div>
+      )}
+
       {/* Large number */}
       <motion.div
-        key={value}
+        key={`${photoNumber}-${value}`}
         initial={{ scale: 2, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.5, opacity: 0 }}
@@ -65,7 +81,7 @@ export function CountdownScreen({ value }: CountdownScreenProps) {
 
       {/* Message */}
       <motion.p
-        key={`msg-${value}`}
+        key={`msg-${photoNumber}-${value}`}
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="text-white text-2xl font-medium mt-8"
@@ -73,7 +89,7 @@ export function CountdownScreen({ value }: CountdownScreenProps) {
         {messages[value] || ''}
       </motion.p>
 
-      {/* Progress dots */}
+      {/* Progress dots for countdown */}
       <div className="flex gap-3 mt-8">
         {[3, 2, 1].map((n) => (
           <motion.div
@@ -86,6 +102,27 @@ export function CountdownScreen({ value }: CountdownScreenProps) {
           />
         ))}
       </div>
+
+      {/* Photo progress indicator */}
+      {totalPhotos > 1 && (
+        <div className="flex gap-2 mt-6">
+          {Array.from({ length: totalPhotos }, (_, i) => i + 1).map((n) => (
+            <motion.div
+              key={`photo-dot-${n}`}
+              className="w-2 h-2 rounded-full"
+              animate={{
+                backgroundColor:
+                  n < photoNumber
+                    ? '#8B5CF6'
+                    : n === photoNumber
+                      ? '#FFFFFF'
+                      : 'rgba(255,255,255,0.3)',
+                scale: n === photoNumber ? 1.3 : 1,
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

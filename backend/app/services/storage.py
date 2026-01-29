@@ -1,7 +1,9 @@
 """Storage service for handling photo files."""
 
+import asyncio
 import io
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -12,6 +14,64 @@ from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Thread pool for CPU-bound image processing (uses multiple cores)
+_image_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="img_proc")
+
+
+def process_image(
+    image_data: bytes,
+    max_width: int,
+    quality: int = 85,
+) -> bytes:
+    """Process image - resize and optimize."""
+    img = Image.open(io.BytesIO(image_data))
+
+    # Convert to RGB if necessary
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    # Resize if needed
+    if img.width > max_width:
+        ratio = max_width / img.width
+        new_height = int(img.height * ratio)
+        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+    # Save to bytes
+    output = io.BytesIO()
+    img.save(output, format="JPEG", quality=quality, optimize=True)
+    return output.getvalue()
+
+
+def _process_and_save_images(
+    source_path: Path,
+    web_path: Path,
+    thumb_path: Path,
+    save_raw: bool,
+) -> tuple[int, int]:
+    """Process and save images - runs in thread pool.
+
+    Returns:
+        Tuple of (original_size, web_size)
+    """
+    # Read source image
+    image_data = source_path.read_bytes()
+    original_size = len(image_data)
+
+    # Save web version
+    if save_raw:
+        web_path.write_bytes(image_data)
+        web_size = original_size
+    else:
+        web_image = process_image(image_data, max_width=1920, quality=90)
+        web_path.write_bytes(web_image)
+        web_size = len(web_image)
+
+    # Always create thumbnail
+    thumb_image = process_image(image_data, max_width=settings.thumbnail_max_width, quality=80)
+    thumb_path.write_bytes(thumb_image)
+
+    return original_size, web_size
 
 
 class StorageService(ABC):
@@ -58,39 +118,37 @@ class LocalStorageService(StorageService):
         sequence: int,
         save_raw: bool = False,
     ) -> tuple[str, str]:
-        """Process captured photo and store web + thumbnail versions."""
+        """Process captured photo and store web + thumbnail versions.
+
+        Image processing runs in a thread pool to avoid blocking the event loop.
+        """
         session_dir = self.base_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
-
-        # Read source image
-        image_data = source_path.read_bytes()
 
         photo_id = str(uuid4())[:8]
         ext = source_path.suffix if save_raw else ".jpg"
         web_filename = f"web_{sequence:03d}_{photo_id}{ext}"
         thumb_filename = f"thumb_{sequence:03d}_{photo_id}.jpg"
-
-        # Save web version
         web_path = session_dir / web_filename
-        if save_raw:
-            web_path.write_bytes(image_data)
-            web_size = len(image_data)
-        else:
-            web_image = process_image(image_data, max_width=1920, quality=90)
-            web_path.write_bytes(web_image)
-            web_size = len(web_image)
-
-        # Always create thumbnail
-        thumb_image = process_image(image_data, max_width=settings.thumbnail_max_width, quality=80)
         thumb_path = session_dir / thumb_filename
-        thumb_path.write_bytes(thumb_image)
+
+        # Run CPU-bound image processing in thread pool
+        loop = asyncio.get_event_loop()
+        original_size, web_size = await loop.run_in_executor(
+            _image_executor,
+            _process_and_save_images,
+            source_path,
+            web_path,
+            thumb_path,
+            save_raw,
+        )
 
         logger.info(
             "Saved photo",
             session_id=session_id,
             sequence=sequence,
             web_path=str(web_path),
-            original_size=len(image_data),
+            original_size=original_size,
             web_size=web_size,
             save_raw=save_raw,
         )
@@ -102,36 +160,13 @@ class LocalStorageService(StorageService):
         session_dir = self.base_dir / session_id
         if session_dir.exists():
             import shutil
+
             shutil.rmtree(session_dir)
             logger.info("Deleted session photos", session_id=session_id)
 
     def get_photo_url(self, path: str) -> str:
         """Get URL for a photo (relative for flexibility)."""
         return f"/photos/{path}"
-
-
-def process_image(
-    image_data: bytes,
-    max_width: int,
-    quality: int = 85,
-) -> bytes:
-    """Process image - resize and optimize."""
-    img = Image.open(io.BytesIO(image_data))
-
-    # Convert to RGB if necessary
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-
-    # Resize if needed
-    if img.width > max_width:
-        ratio = max_width / img.width
-        new_height = int(img.height * ratio)
-        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-
-    # Save to bytes
-    output = io.BytesIO()
-    img.save(output, format="JPEG", quality=quality, optimize=True)
-    return output.getvalue()
 
 
 def generate_photo_strip(
@@ -199,12 +234,14 @@ def generate_photo_strip(
     for y in range(outer_padding + 36, total_height - outer_padding, hole_spacing):
         draw.ellipse(
             [(18 - hole_radius, y - hole_radius), (18 + hole_radius, y + hole_radius)],
-            fill=hole_color
+            fill=hole_color,
         )
         draw.ellipse(
-            [(strip_width - 18 - hole_radius, y - hole_radius),
-             (strip_width - 18 + hole_radius, y + hole_radius)],
-            fill=hole_color
+            [
+                (strip_width - 18 - hole_radius, y - hole_radius),
+                (strip_width - 18 + hole_radius, y + hole_radius),
+            ],
+            fill=hole_color,
         )
 
     # Load fonts
@@ -252,9 +289,19 @@ def generate_photo_strip(
         (title_x + title_width + 32, title_y + 16),
     ]
     for sx, sy in sparkle_positions:
-        draw.polygon([(sx, sy-12), (sx+3, sy-3), (sx+12, sy), (sx+3, sy+3),
-                      (sx, sy+12), (sx-3, sy+3), (sx-12, sy), (sx-3, sy-3)],
-                     fill=sparkle_color)
+        draw.polygon(
+            [
+                (sx, sy - 12),
+                (sx + 3, sy - 3),
+                (sx + 12, sy),
+                (sx + 3, sy + 3),
+                (sx, sy + 12),
+                (sx - 3, sy + 3),
+                (sx - 12, sy),
+                (sx - 3, sy - 3),
+            ],
+            fill=sparkle_color,
+        )
 
     # Paste photos
     y_offset = outer_padding + header_height
@@ -278,8 +325,7 @@ def generate_photo_strip(
         shadow_x = outer_padding + shadow_offset
         shadow_y = y_offset + shadow_offset
         draw.rounded_rectangle(
-            [(shadow_x, shadow_y),
-             (shadow_x + bordered_width - 1, shadow_y + bordered_height - 1)],
+            [(shadow_x, shadow_y), (shadow_x + bordered_width - 1, shadow_y + bordered_height - 1)],
             radius=corner_radius + photo_border,
             fill=shadow_color,
         )
@@ -300,9 +346,11 @@ def generate_photo_strip(
     heart_color = (236, 72, 153)
     for hx in [date_x - 60, date_x + date_width + 36]:
         hy = date_y + 12
-        draw.polygon([(hx, hy+6), (hx+9, hy-3), (hx+18, hy+6), (hx+9, hy+15)], fill=heart_color)
-        draw.ellipse([(hx, hy-3), (hx+9, hy+6)], fill=heart_color)
-        draw.ellipse([(hx+9, hy-3), (hx+18, hy+6)], fill=heart_color)
+        draw.polygon(
+            [(hx, hy + 6), (hx + 9, hy - 3), (hx + 18, hy + 6), (hx + 9, hy + 15)], fill=heart_color
+        )
+        draw.ellipse([(hx, hy - 3), (hx + 9, hy + 6)], fill=heart_color)
+        draw.ellipse([(hx + 9, hy - 3), (hx + 18, hy + 6)], fill=heart_color)
 
     # Save
     output = io.BytesIO()

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,7 @@ router = APIRouter()
 async def get_global_wifi_qr_code(size: int = 256) -> Response:
     """Get QR code for WiFi connection (no session required)."""
     qr_image = generate_wifi_qr_code(
-        settings.wifi_ssid,
-        settings.wifi_password,
-        size=min(size, 512)
+        settings.wifi_ssid, settings.wifi_password, size=min(size, 512)
     )
 
     return Response(
@@ -82,8 +81,7 @@ async def create_session(
 
     # Create new session
     session = Session(
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(minutes=settings.session_expiry_minutes),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.session_expiry_minutes),
         upload_token=secrets.token_urlsafe(32),
     )
 
@@ -149,9 +147,7 @@ async def get_session_gallery(
 
     # Get photos
     photos_result = await db.execute(
-        select(Photo)
-        .where(Photo.session_id == session_id)
-        .order_by(Photo.sequence)
+        select(Photo).where(Photo.session_id == session_id).order_by(Photo.sequence)
     )
     photos = photos_result.scalars().all()
 
@@ -232,9 +228,7 @@ async def get_wifi_qr_code(
         )
 
     qr_image = generate_wifi_qr_code(
-        settings.wifi_ssid,
-        settings.wifi_password,
-        size=min(size, 512)
+        settings.wifi_ssid, settings.wifi_password, size=min(size, 512)
     )
 
     return Response(
@@ -376,94 +370,188 @@ async def capture_photos(
                 detail="Camera not available",
             )
 
-    # Start countdown
-    session.status = SessionStatus.COUNTDOWN.value
-    await db.commit()
-
-    # Broadcast countdown
-    for i in range(settings.countdown_seconds, 0, -1):
-        await ws_manager.send_countdown(session_id, i)
-        await asyncio.sleep(1)
-
-    # Signal capture start
-    await ws_manager.broadcast_to_session(session_id, {
-        "type": "capture_start",
-        "data": {"sessionId": session_id}
-    })
-
-    session.status = SessionStatus.CAPTURING.value
-    await db.commit()
-
     storage = get_storage_service()
-    photos_captured = []
+    capture_errors: list[str] = []
+    processing_tasks: list[asyncio.Task] = []
+    photos_captured: list[Photo] = []
 
-    try:
-        # Pause preview during capture
-        pause_preview()
+    # Lock to safely append to photos_captured from background tasks
+    photos_lock = asyncio.Lock()
 
-        for i in range(settings.photos_per_capture):
-            sequence = session.photo_count + 1
-
-            # Capture
-            original_filename = f"{session_id}_{sequence:02d}_original.jpg"
-            original_path = settings.photos_dir / session_id / original_filename
-
-            await camera.capture(original_path)
-
-            # Process and store
+    async def process_photo_background(seq: int, path: Path) -> None:
+        """Process a single photo in the background."""
+        nonlocal photos_captured
+        try:
+            # Process and store (runs in thread pool)
             web_path, thumb_path = await storage.process_and_store(
-                original_path,
+                path,
                 session_id,
-                sequence,
+                seq,
                 save_raw=settings.save_raw_images,
             )
 
-            # Create photo record
-            photo = Photo(
-                session_id=session_id,
-                sequence=sequence,
-                web_path=web_path,
-                thumbnail_path=thumb_path,
-            )
-            db.add(photo)
-            session.photo_count = sequence
+            # Create photo record - need fresh db session for background task
+            from app.db.session import async_session_maker
+
+            async with async_session_maker() as bg_db:
+                photo = Photo(
+                    session_id=session_id,
+                    sequence=seq,
+                    web_path=web_path,
+                    thumbnail_path=thumb_path,
+                )
+                bg_db.add(photo)
+
+                # Update session photo count
+                await bg_db.execute(
+                    update(Session).where(Session.id == session_id).values(photo_count=seq)
+                )
+                await bg_db.commit()
+                await bg_db.refresh(photo)
+
+                async with photos_lock:
+                    photos_captured.append(photo)
+
+                # Notify clients
+                await ws_manager.send_photo_ready(
+                    session_id,
+                    photo.id,
+                    photo.sequence,
+                    storage.get_photo_url(photo.web_path),
+                    storage.get_photo_url(photo.thumbnail_path),
+                )
+                logger.info(f"[CAPTURE] Photo {seq} processed and ready")
+
+        except Exception as e:
+            error_msg = f"Photo {seq} processing failed: {e}"
+            logger.error(f"[CAPTURE] {error_msg}")
+            capture_errors.append(error_msg)
+
+    try:
+        # Pause preview during capture sequence
+        pause_preview()
+
+        for i in range(settings.photos_per_capture):
+            sequence = session.photo_count + i + 1
+            photo_num = i + 1
+            is_last_photo = i == settings.photos_per_capture - 1
+
+            # Countdown before EVERY photo
+            session.status = SessionStatus.COUNTDOWN.value
             await db.commit()
-            await db.refresh(photo)
-            photos_captured.append(photo)
 
-            # Notify clients immediately
-            await ws_manager.send_photo_ready(
+            for countdown in range(settings.countdown_seconds, 0, -1):
+                await ws_manager.send_countdown(
+                    session_id, countdown, photo_num, settings.photos_per_capture
+                )
+                await asyncio.sleep(1)
+
+            # Signal this capture is starting
+            session.status = SessionStatus.CAPTURING.value
+            await db.commit()
+            await ws_manager.broadcast_to_session(
                 session_id,
-                photo.id,
-                photo.sequence,
-                storage.get_photo_url(photo.web_path),
-                storage.get_photo_url(photo.thumbnail_path),
+                {
+                    "type": "capture_start",
+                    "data": {
+                        "sessionId": session_id,
+                        "photoNumber": photo_num,
+                        "totalPhotos": settings.photos_per_capture,
+                    },
+                },
             )
 
-            # Delay between captures
-            if i < settings.photos_per_capture - 1:
-                await asyncio.sleep(settings.capture_delay_seconds)
+            # Capture the photo
+            try:
+                # Ensure camera is connected (may have been reset after error)
+                if not camera.is_connected():
+                    logger.warning(
+                        f"[CAPTURE] Camera disconnected before photo {photo_num}, reconnecting..."
+                    )
+                    if not await camera.connect():
+                        raise CameraError("Failed to reconnect camera")
 
+                # Capture
+                original_filename = f"{session_id}_{sequence:02d}_original.jpg"
+                original_path = settings.photos_dir / session_id / original_filename
+
+                await camera.capture(original_path)
+                logger.info(
+                    f"[CAPTURE] Photo {photo_num} captured, starting background processing..."
+                )
+
+                # Start processing in background immediately (runs during next countdown)
+                task = asyncio.create_task(process_photo_background(sequence, original_path))
+                processing_tasks.append(task)
+
+            except (CameraError, Exception) as e:
+                # Log the error but continue with remaining photos
+                error_msg = f"Photo {photo_num} capture failed: {e}"
+                logger.error(f"[CAPTURE] {error_msg}")
+                capture_errors.append(error_msg)
+
+                # Notify clients about this specific failure
+                await ws_manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "type": "photo_failed",
+                        "data": {
+                            "sessionId": session_id,
+                            "photoNumber": photo_num,
+                            "error": str(e),
+                        },
+                    },
+                )
+
+                # Try to reconnect for next photo
+                if not camera.is_connected():
+                    logger.info(f"[CAPTURE] Attempting camera reconnect for remaining photos...")
+                    await camera.connect()
+
+            # After last photo, signal we're processing remaining photos
+            if is_last_photo and processing_tasks:
+                await ws_manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "type": "processing",
+                        "data": {"sessionId": session_id, "photoCount": len(processing_tasks)},
+                    },
+                )
+
+        # Wait for all background processing to complete
+        if processing_tasks:
+            logger.info(f"[CAPTURE] Waiting for {len(processing_tasks)} processing tasks...")
+            await asyncio.gather(*processing_tasks, return_exceptions=True)
+
+        # Done with capture sequence
         session.status = SessionStatus.ACTIVE.value
         await db.commit()
 
-        # Send capture complete
-        strip_url = f"{settings.public_url}/api/v1/sessions/{session_id}/strip"
-        await ws_manager.send_capture_complete(session_id, session.photo_count, strip_url)
+        # Determine outcome
+        if photos_captured:
+            # At least some photos succeeded
+            strip_url = f"{settings.public_url}/api/v1/sessions/{session_id}/strip"
+            await ws_manager.send_capture_complete(session_id, session.photo_count, strip_url)
+            if capture_errors:
+                logger.warning(
+                    f"[CAPTURE] Completed with {len(capture_errors)} errors: {capture_errors}"
+                )
+        else:
+            # All photos failed
+            error_summary = "; ".join(capture_errors) if capture_errors else "Unknown error"
+            await ws_manager.send_capture_failed(
+                session_id, f"All captures failed: {error_summary}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"All captures failed: {error_summary}",
+            )
 
-    except CameraError as e:
-        logger.error(f"Camera error during capture: {e}")
-        await db.rollback()
-        session.status = SessionStatus.ACTIVE.value
-        await db.commit()
-        await ws_manager.send_capture_failed(session_id, f"Camera error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Capture failed: {e}",
-        )
+    except HTTPException:
+        # Re-raise HTTP exceptions (from "all photos failed" case)
+        raise
     except Exception as e:
-        logger.exception(f"Unexpected error during capture: {e}")
-        await db.rollback()
+        logger.exception(f"Unexpected error during capture sequence: {e}")
         session.status = SessionStatus.ACTIVE.value
         await db.commit()
         await ws_manager.send_capture_failed(session_id, f"Unexpected error: {e}")
@@ -478,9 +566,7 @@ async def capture_photos(
     # Get all photos
     await db.refresh(session)
     all_photos_result = await db.execute(
-        select(Photo)
-        .where(Photo.session_id == session_id)
-        .order_by(Photo.sequence)
+        select(Photo).where(Photo.session_id == session_id).order_by(Photo.sequence)
     )
     all_photos = all_photos_result.scalars().all()
 

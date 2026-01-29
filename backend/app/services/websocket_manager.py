@@ -74,10 +74,10 @@ class WebSocketManager:
         logger.info("Phone connected", session_id=session_id, phone_id=phone_id)
 
         # Notify kiosk that a phone connected
-        await self.send_to_kiosk(session_id, {
-            "type": "phone_connected",
-            "data": {"phoneId": phone_id, "sessionId": session_id}
-        })
+        await self.send_to_kiosk(
+            session_id,
+            {"type": "phone_connected", "data": {"phoneId": phone_id, "sessionId": session_id}},
+        )
 
         return phone_id
 
@@ -102,10 +102,13 @@ class WebSocketManager:
                         logger.info("Phone disconnected", session_id=session_id, phone_id=phone_id)
 
                         # Notify kiosk
-                        await self._send_to_kiosk_unlocked(session_id, {
-                            "type": "phone_disconnected",
-                            "data": {"phoneId": phone_id, "sessionId": session_id}
-                        })
+                        await self._send_to_kiosk_unlocked(
+                            session_id,
+                            {
+                                "type": "phone_disconnected",
+                                "data": {"phoneId": phone_id, "sessionId": session_id},
+                            },
+                        )
                         break
 
                 # Clean up empty session dict
@@ -148,7 +151,7 @@ class WebSocketManager:
                         "Failed to send to phone",
                         session_id=session_id,
                         phone_id=phone_id,
-                        error=str(e)
+                        error=str(e),
                     )
                     # Remove dead connection
                     del phones[phone_id]
@@ -161,12 +164,29 @@ class WebSocketManager:
         await self.send_to_kiosk(session_id, message)
         await self.send_to_phones(session_id, message)
 
-    async def send_countdown(self, session_id: str, value: int) -> None:
-        """Send countdown tick to all clients."""
-        await self.broadcast_to_session(session_id, {
-            "type": "countdown",
-            "data": {"value": value, "sessionId": session_id}
-        })
+    async def send_countdown(
+        self, session_id: str, value: int, photo_number: int = 1, total_photos: int = 1
+    ) -> None:
+        """Send countdown tick to all clients.
+
+        Args:
+            session_id: The session ID
+            value: Countdown value (3, 2, 1)
+            photo_number: Which photo we're counting down for (1, 2, 3...)
+            total_photos: Total photos in this capture sequence
+        """
+        await self.broadcast_to_session(
+            session_id,
+            {
+                "type": "countdown",
+                "data": {
+                    "value": value,
+                    "sessionId": session_id,
+                    "photoNumber": photo_number,
+                    "totalPhotos": total_photos,
+                },
+            },
+        )
 
     async def send_photo_ready(
         self,
@@ -177,16 +197,19 @@ class WebSocketManager:
         thumbnail_url: str,
     ) -> None:
         """Notify all clients that a photo is ready."""
-        await self.broadcast_to_session(session_id, {
-            "type": "photo_ready",
-            "data": {
-                "id": photo_id,
-                "sessionId": session_id,
-                "sequence": sequence,
-                "webUrl": web_url,
-                "thumbnailUrl": thumbnail_url,
-            }
-        })
+        await self.broadcast_to_session(
+            session_id,
+            {
+                "type": "photo_ready",
+                "data": {
+                    "id": photo_id,
+                    "sessionId": session_id,
+                    "sequence": sequence,
+                    "webUrl": web_url,
+                    "thumbnailUrl": thumbnail_url,
+                },
+            },
+        )
 
     async def send_capture_complete(
         self,
@@ -195,14 +218,17 @@ class WebSocketManager:
         strip_url: str,
     ) -> None:
         """Notify all clients that capture is complete."""
-        await self.broadcast_to_session(session_id, {
-            "type": "capture_complete",
-            "data": {
-                "sessionId": session_id,
-                "photoCount": photo_count,
-                "stripUrl": strip_url,
-            }
-        })
+        await self.broadcast_to_session(
+            session_id,
+            {
+                "type": "capture_complete",
+                "data": {
+                    "sessionId": session_id,
+                    "photoCount": photo_count,
+                    "stripUrl": strip_url,
+                },
+            },
+        )
 
     async def send_capture_failed(
         self,
@@ -210,20 +236,22 @@ class WebSocketManager:
         error: str,
     ) -> None:
         """Notify all clients that capture failed."""
-        await self.broadcast_to_session(session_id, {
-            "type": "capture_failed",
-            "data": {
-                "sessionId": session_id,
-                "error": error,
-            }
-        })
+        await self.broadcast_to_session(
+            session_id,
+            {
+                "type": "capture_failed",
+                "data": {
+                    "sessionId": session_id,
+                    "error": error,
+                },
+            },
+        )
 
     async def send_session_ended(self, session_id: str) -> None:
         """Notify all clients that session has ended."""
-        await self.broadcast_to_session(session_id, {
-            "type": "session_ended",
-            "data": {"sessionId": session_id}
-        })
+        await self.broadcast_to_session(
+            session_id, {"type": "session_ended", "data": {"sessionId": session_id}}
+        )
 
         # Clean up connections for this session
         async with self._lock:

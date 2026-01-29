@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { WaitingScreen } from './components/WaitingScreen';
 import { CountdownScreen } from './components/CountdownScreen';
+import { ProcessingScreen } from './components/ProcessingScreen';
 import { PhotosScreen } from './components/PhotosScreen';
 import { useWebSocket } from './hooks/useWebSocket';
 import type { Photo } from './types';
@@ -10,7 +11,10 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [photoNumber, setPhotoNumber] = useState<number>(1);
+  const [totalPhotos, setTotalPhotos] = useState<number>(1);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [kioskConnected, setKioskConnected] = useState(false);
   const [stripUrl, setStripUrl] = useState<string | null>(null);
 
@@ -42,12 +46,22 @@ export default function App() {
       case 'countdown':
         if (message.data) {
           setCountdown(message.data.value as number);
+          setPhotoNumber((message.data.photoNumber as number) || 1);
+          setTotalPhotos((message.data.totalPhotos as number) || 1);
           setIsCapturing(true);
+          setIsProcessing(false);
         }
         break;
 
       case 'capture_start':
+        // Don't clear countdown - let it transition naturally to next photo
+        break;
+
+      case 'processing':
+        // All photos captured, now processing
         setCountdown(null);
+        setIsCapturing(true);
+        setIsProcessing(true);
         break;
 
       case 'photo_ready':
@@ -59,12 +73,13 @@ export default function App() {
             webUrl: message.data.webUrl as string,
             thumbnailUrl: message.data.thumbnailUrl as string,
           };
-          setPhotos(prev => [...prev, newPhoto]);
+          setPhotos((prev) => [...prev, newPhoto]);
         }
         break;
 
       case 'capture_complete':
         setIsCapturing(false);
+        setIsProcessing(false);
         setCountdown(null);
         if (message.data?.stripUrl) {
           setStripUrl(message.data.stripUrl as string);
@@ -90,9 +105,7 @@ export default function App() {
         <div className="text-center text-white">
           <div className="text-6xl mb-4">📸</div>
           <h1 className="text-2xl font-bold mb-2">PicPop</h1>
-          <p className="text-white/70">
-            Scan the QR code on the photo booth to get started!
-          </p>
+          <p className="text-white/70">Scan the QR code on the photo booth to get started!</p>
         </div>
       </div>
     );
@@ -100,8 +113,9 @@ export default function App() {
 
   // Determine which screen to show
   const showCountdown = countdown !== null && countdown > 0;
-  const showPhotos = photos.length > 0 && !showCountdown;
-  const showWaiting = !showCountdown && !showPhotos;
+  const showProcessing = isProcessing && !showCountdown;
+  const showPhotos = photos.length > 0 && !showCountdown && !showProcessing;
+  const showWaiting = !showCountdown && !showProcessing && !showPhotos;
 
   return (
     <div className="h-full relative overflow-hidden">
@@ -114,7 +128,23 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="h-full"
           >
-            <CountdownScreen value={countdown} />
+            <CountdownScreen
+              value={countdown}
+              photoNumber={photoNumber}
+              totalPhotos={totalPhotos}
+            />
+          </motion.div>
+        )}
+
+        {showProcessing && (
+          <motion.div
+            key="processing"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="h-full"
+          >
+            <ProcessingScreen />
           </motion.div>
         )}
 
@@ -142,11 +172,7 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="h-full"
           >
-            <PhotosScreen
-              photos={photos}
-              stripUrl={stripUrl}
-              isCapturing={isCapturing}
-            />
+            <PhotosScreen photos={photos} stripUrl={stripUrl} isCapturing={isCapturing} />
           </motion.div>
         )}
       </AnimatePresence>

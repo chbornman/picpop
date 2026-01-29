@@ -2,10 +2,47 @@
 
 import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CameraStats:
+    """Track camera statistics for debugging."""
+
+    connect_count: int = 0
+    disconnect_count: int = 0
+    preview_frame_count: int = 0
+    preview_error_count: int = 0
+    capture_count: int = 0
+    capture_error_count: int = 0
+    last_preview_time: Optional[float] = None
+    last_capture_time: Optional[float] = None
+    last_error: Optional[str] = None
+    last_error_time: Optional[float] = None
+
+    def log_summary(self) -> None:
+        """Log a summary of camera stats."""
+        preview_age = ""
+        if self.last_preview_time:
+            age_ms = (time.time() - self.last_preview_time) * 1000
+            preview_age = f", last_preview={age_ms:.0f}ms ago"
+
+        logger.info(
+            f"[CAMERA STATS] connects={self.connect_count}, disconnects={self.disconnect_count}, "
+            f"previews={self.preview_frame_count}, preview_errors={self.preview_error_count}, "
+            f"captures={self.capture_count}, capture_errors={self.capture_error_count}"
+            f"{preview_age}"
+        )
+
+
+# Global stats instance
+_camera_stats = CameraStats()
 
 
 class CameraError(Exception):
@@ -57,21 +94,25 @@ class GPhoto2Camera(Camera):
 
         async with self._lock:
             if self._camera is not None:
+                logger.debug("[CAMERA] Already connected")
                 return True
 
             try:
+                logger.info("[CAMERA] Connecting to camera...")
                 self._context = gp.Context()
                 self._camera = gp.Camera()
                 await asyncio.to_thread(self._camera.init, self._context)
 
-                summary = await asyncio.to_thread(
-                    self._camera.get_summary, self._context
-                )
-                logger.info(f"Camera connected: {summary.text[:80]}...")
+                summary = await asyncio.to_thread(self._camera.get_summary, self._context)
+                _camera_stats.connect_count += 1
+                logger.info(f"[CAMERA] Connected successfully: {summary.text[:80]}...")
+                _camera_stats.log_summary()
                 return True
 
             except gp.GPhoto2Error as e:
-                logger.error(f"Failed to connect: {e}")
+                _camera_stats.last_error = str(e)
+                _camera_stats.last_error_time = time.time()
+                logger.error(f"[CAMERA] Failed to connect: {e}")
                 self._camera = None
                 self._context = None
                 return False
@@ -80,13 +121,16 @@ class GPhoto2Camera(Camera):
         async with self._lock:
             if self._camera:
                 try:
+                    logger.info("[CAMERA] Disconnecting...")
                     await asyncio.to_thread(self._camera.exit, self._context)
                 except Exception as e:
-                    logger.warning(f"Disconnect error: {e}")
+                    logger.warning(f"[CAMERA] Disconnect error: {e}")
                 finally:
                     self._camera = None
                     self._context = None
-                    logger.info("Camera disconnected")
+                    _camera_stats.disconnect_count += 1
+                    logger.info("[CAMERA] Disconnected")
+                    _camera_stats.log_summary()
 
     async def capture(self, save_path: Path) -> Path:
         import gphoto2 as gp
@@ -96,13 +140,19 @@ class GPhoto2Camera(Camera):
                 raise CameraNotConnected("Camera not connected")
 
             try:
-                logger.info("Capturing...")
+                logger.info("[CAMERA] Capturing photo...")
+                start_time = time.time()
+
                 file_path = await asyncio.to_thread(
                     self._camera.capture, gp.GP_CAPTURE_IMAGE, self._context
                 )
-                logger.info(f"Captured: {file_path.folder}/{file_path.name}")
+                capture_time = time.time() - start_time
+                logger.info(
+                    f"[CAMERA] Captured in {capture_time:.2f}s: {file_path.folder}/{file_path.name}"
+                )
 
                 # Download from camera
+                download_start = time.time()
                 camera_file = gp.CameraFile()
                 await asyncio.to_thread(
                     self._camera.file_get,
@@ -115,12 +165,20 @@ class GPhoto2Camera(Camera):
 
                 save_path.parent.mkdir(parents=True, exist_ok=True)
                 await asyncio.to_thread(camera_file.save, str(save_path))
-                logger.info(f"Saved: {save_path}")
+                download_time = time.time() - download_start
+
+                _camera_stats.capture_count += 1
+                _camera_stats.last_capture_time = time.time()
+                logger.info(f"[CAMERA] Saved in {download_time:.2f}s: {save_path}")
                 return save_path
 
             except gp.GPhoto2Error as e:
                 # Reset on any gphoto2 error - camera may be disconnected
-                logger.error(f"Capture failed, resetting camera: {e}")
+                _camera_stats.capture_error_count += 1
+                _camera_stats.last_error = str(e)
+                _camera_stats.last_error_time = time.time()
+                logger.error(f"[CAMERA] Capture failed, resetting camera: {e}")
+                _camera_stats.log_summary()
                 self._camera = None
                 self._context = None
                 raise CaptureError(f"Capture failed: {e}")
@@ -135,11 +193,23 @@ class GPhoto2Camera(Camera):
             try:
                 camera_file = await asyncio.to_thread(self._camera.capture_preview)
                 data = await asyncio.to_thread(camera_file.get_data_and_size)
+
+                _camera_stats.preview_frame_count += 1
+                _camera_stats.last_preview_time = time.time()
+
+                # Log every 100 frames
+                if _camera_stats.preview_frame_count % 100 == 0:
+                    logger.debug(f"[CAMERA] Preview frames: {_camera_stats.preview_frame_count}")
+
                 return bytes(data)
 
             except gp.GPhoto2Error as e:
                 # Reset on any gphoto2 error - camera may be disconnected
-                logger.warning(f"Preview error, resetting camera: {e}")
+                _camera_stats.preview_error_count += 1
+                _camera_stats.last_error = str(e)
+                _camera_stats.last_error_time = time.time()
+                logger.warning(f"[CAMERA] Preview error, resetting camera: {e}")
+                _camera_stats.log_summary()
                 self._camera = None
                 self._context = None
                 raise CaptureError(f"Preview failed: {e}")
@@ -181,9 +251,7 @@ class MockCamera(Camera):
 
         text = f"PicPop #{self._capture_count}"
         try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 96
-            )
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 96)
         except OSError:
             font = ImageFont.load_default()
 
@@ -218,9 +286,7 @@ class MockCamera(Camera):
         text = f"PREVIEW\n{timestamp}"
 
         try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36
-            )
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
         except OSError:
             font = ImageFont.load_default()
 
@@ -231,12 +297,8 @@ class MockCamera(Camera):
 
         # Viewfinder corners
         for cx, cy in [(40, 40), (600, 40), (40, 440), (600, 440)]:
-            draw.line(
-                [(cx - 20, cy), (cx + 20, cy)], fill=(255, 255, 255), width=2
-            )
-            draw.line(
-                [(cx, cy - 20), (cx, cy + 20)], fill=(255, 255, 255), width=2
-            )
+            draw.line([(cx - 20, cy), (cx + 20, cy)], fill=(255, 255, 255), width=2)
+            draw.line([(cx, cy - 20), (cx, cy + 20)], fill=(255, 255, 255), width=2)
 
         output = io.BytesIO()
         img.save(output, format="JPEG", quality=80)
