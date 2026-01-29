@@ -3,7 +3,9 @@
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
-/// Create the capture button
+use super::animations;
+
+/// Create the capture button with press animation feedback
 pub fn create_capture_button<F>(on_click: F) -> gtk::Button
 where
     F: Fn() + 'static,
@@ -25,7 +27,11 @@ where
     inner.append(&icon);
     button.set_child(Some(&inner));
 
+    // Add press animation feedback
+    let button_clone = button.clone();
     button.connect_clicked(move |_| {
+        // Visual feedback - quick pulse animation
+        animations::button_press(&button_clone);
         on_click();
     });
 

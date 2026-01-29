@@ -1,10 +1,9 @@
 //! QR code image widget that loads from URL with expand/collapse support.
 
-use adw::prelude::*;
-use adw::Animation;
-use adw::TimedAnimation;
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -50,8 +49,23 @@ pub fn load_image_into_picture(ctx: &Rc<AppContext>, url: &str, picture: &gtk::P
     });
 }
 
+/// Create a QR code item with label below
+fn create_qr_item(qr: &gtk::Picture, label_text: &str) -> gtk::Box {
+    let container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    container.set_halign(gtk::Align::Center);
+    container.set_valign(gtk::Align::Center);
+
+    container.append(qr);
+
+    let label = gtk::Label::new(Some(label_text));
+    label.add_css_class("qr-label");
+    container.append(&label);
+
+    container
+}
+
 /// Expandable QR panel state
-/// Displays QR codes in a horizontal row, expands to fill screen on tap
+/// Displays QR codes in a horizontal row with labels, expands to fill screen on tap
 pub struct ExpandableQrPanel {
     pub panel: gtk::Box,
     ctx: Rc<AppContext>,
@@ -60,7 +74,8 @@ pub struct ExpandableQrPanel {
     session_box: gtk::Box,
     is_expanded: Rc<Cell<bool>>,
     session_id: Rc<RefCell<Option<String>>>,
-    animation: Rc<RefCell<Option<TimedAnimation>>>,
+    /// Store animation reference to prevent it from being dropped
+    animation: Rc<RefCell<Option<adw::TimedAnimation>>>,
 }
 
 impl ExpandableQrPanel {
@@ -68,7 +83,7 @@ impl ExpandableQrPanel {
     /// Uses horizontal layout with QR codes side by side
     pub fn new(ctx: &Rc<AppContext>) -> Rc<Self> {
         // Main panel - horizontal layout for QR codes in a row
-        let panel = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let panel = gtk::Box::new(gtk::Orientation::Horizontal, 16);
         panel.add_css_class("qr-panel-small");
         panel.set_halign(gtk::Align::End);
         panel.set_valign(gtk::Align::Start);
@@ -80,8 +95,7 @@ impl ExpandableQrPanel {
         let is_expanded = Rc::new(Cell::new(false));
         let session_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
 
-        // Create WiFi QR (small size initially)
-        // Labels are now embedded in the QR code image itself
+        // Create WiFi QR
         let wifi_qr = gtk::Picture::new();
         wifi_qr.set_size_request(
             config::QR_SIZE_SMALL as i32,
@@ -102,17 +116,11 @@ impl ExpandableQrPanel {
         session_qr.set_vexpand(false);
         session_qr.add_css_class("qr-image");
 
-        // WiFi box (just the QR, label is embedded)
-        let wifi_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        wifi_box.set_halign(gtk::Align::Center);
-        wifi_box.set_valign(gtk::Align::Center);
-        wifi_box.append(&wifi_qr);
+        // WiFi box with label
+        let wifi_box = create_qr_item(&wifi_qr, "WIFI");
 
-        // Session box (just the QR, label is embedded)
-        let session_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        session_box.set_halign(gtk::Align::Center);
-        session_box.set_valign(gtk::Align::Center);
-        session_box.append(&session_qr);
+        // Session box with label
+        let session_box = create_qr_item(&session_qr, "PHOTOS");
         session_box.set_visible(false);
 
         panel.append(&wifi_box);
@@ -140,40 +148,6 @@ impl ExpandableQrPanel {
         qr_panel
     }
 
-    /// Animate the QR panel size transition
-    fn animate_size(&self, from_size: u32, to_size: u32) {
-        // Cancel any existing animation
-        if let Some(ref anim) = *self.animation.borrow() {
-            anim.skip();
-        }
-
-        let wifi_qr = self.wifi_qr.clone();
-        let session_qr = self.session_qr.clone();
-        let session_box = self.session_box.clone();
-
-        // Create animation target that updates widget sizes
-        let target = adw::CallbackAnimationTarget::new(move |value| {
-            let size = value as i32;
-            wifi_qr.set_size_request(size, size);
-            if session_box.is_visible() {
-                session_qr.set_size_request(size, size);
-            }
-        });
-
-        // Create timed animation (300ms with ease-out curve)
-        let animation = TimedAnimation::builder()
-            .widget(&self.panel)
-            .value_from(from_size as f64)
-            .value_to(to_size as f64)
-            .duration(300)
-            .easing(adw::Easing::EaseOutCubic)
-            .target(&target)
-            .build();
-
-        animation.play();
-        *self.animation.borrow_mut() = Some(animation);
-    }
-
     /// Toggle expanded state with smooth animation
     fn toggle_expanded(&self) {
         let expanded = !self.is_expanded.get();
@@ -196,14 +170,10 @@ impl ExpandableQrPanel {
             );
         }
 
-        // Animate the size transition
-        self.animate_size(from_size, to_size);
-
-        // Update CSS class for styling
+        // Update CSS class and positioning immediately
         if expanded {
             self.panel.remove_css_class("qr-panel-small");
             self.panel.add_css_class("qr-panel-expanded");
-            // Center the panel when expanded
             self.panel.set_halign(gtk::Align::Center);
             self.panel.set_valign(gtk::Align::Center);
             self.panel.set_margin_end(0);
@@ -211,15 +181,51 @@ impl ExpandableQrPanel {
         } else {
             self.panel.remove_css_class("qr-panel-expanded");
             self.panel.add_css_class("qr-panel-small");
-            // Position in corner when collapsed
             self.panel.set_halign(gtk::Align::End);
             self.panel.set_valign(gtk::Align::Start);
             self.panel.set_margin_end(16);
             self.panel.set_margin_top(16);
         }
+
+        // Animate the size transition
+        self.animate_size(from_size, to_size);
     }
 
-    /// Update the session QR
+    /// Animate QR code size with smooth easing
+    fn animate_size(&self, from_size: u32, to_size: u32) {
+        // Cancel any existing animation
+        if let Some(ref anim) = *self.animation.borrow() {
+            anim.skip();
+        }
+
+        let wifi_qr = self.wifi_qr.clone();
+        let session_qr = self.session_qr.clone();
+        let session_box = self.session_box.clone();
+
+        // Create callback target that updates widget sizes
+        let target = adw::CallbackAnimationTarget::new(move |value| {
+            let size = value as i32;
+            wifi_qr.set_size_request(size, size);
+            if session_box.is_visible() {
+                session_qr.set_size_request(size, size);
+            }
+        });
+
+        // Create timed animation (300ms with ease-out-cubic)
+        let animation = adw::TimedAnimation::builder()
+            .widget(&self.panel)
+            .value_from(from_size as f64)
+            .value_to(to_size as f64)
+            .duration(300)
+            .easing(adw::Easing::EaseOutCubic)
+            .target(&target)
+            .build();
+
+        animation.play();
+        *self.animation.borrow_mut() = Some(animation);
+    }
+
+    /// Update the session QR with fade-in animation
     pub fn set_session(&self, ctx: &Rc<AppContext>, session_id: &str) {
         *self.session_id.borrow_mut() = Some(session_id.to_string());
 
@@ -231,14 +237,32 @@ impl ExpandableQrPanel {
 
         self.session_qr.set_size_request(size as i32, size as i32);
         load_image_into_picture(ctx, &config::session_qr_url(session_id, size), &self.session_qr);
+
+        // Fade in the session box
+        self.session_box.set_opacity(0.0);
         self.session_box.set_visible(true);
+        super::animations::fade_in(&self.session_box, super::animations::duration::NORMAL);
     }
 
-    /// Hide the session QR
+    /// Hide the session QR with fade-out animation
     pub fn hide_session(&self) {
         *self.session_id.borrow_mut() = None;
-        self.session_qr.set_paintable(None::<&gtk::gdk::Paintable>);
-        self.session_box.set_visible(false);
+
+        if self.session_box.is_visible() {
+            let session_qr = self.session_qr.clone();
+            let session_box = self.session_box.clone();
+            super::animations::fade(
+                &self.session_box,
+                1.0,
+                0.0,
+                super::animations::duration::FAST,
+                Some(Box::new(move || {
+                    session_qr.set_paintable(None::<&gtk::gdk::Paintable>);
+                    session_box.set_visible(false);
+                    session_box.set_opacity(1.0);
+                })),
+            );
+        }
     }
 
     /// Collapse if expanded

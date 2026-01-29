@@ -6,24 +6,43 @@ authors = ["Caleb Bornman"]
 description = "Native GTK4 kiosk for PicPop photo booth"
 
 [dependencies]
-# GTK4 and GLib
-gtk4 = { version = "0.9", features = ["v4_12"] }
-glib = "0.20"
-gio = "0.20"
+# =============================================================================
+# GTK4 / GLib / Libadwaita
+# =============================================================================
+# Target system (Radxa Zero 3W / Debian Forky):
+#   - GTK4: 4.20.3
+#   - GLib: 2.86.3
+#   - Libadwaita: 1.8.3
+#
+# Rust crate version mapping:
+#   - gtk4 0.10.x requires gtk4-sys 0.10.x (GTK4 4.x)
+#   - libadwaita 0.8.x requires gtk4 0.10.x
+#   - glib/gio 0.21.x matches gtk4 0.10.x
+#
+gtk4 = { version = "0.10", features = ["v4_12"] }
+glib = "0.21"
+gio = "0.21"
+libadwaita = { version = "0.8", features = ["v1_8"] }
 
-# GStreamer for video
-gstreamer = "0.23"
-gstreamer-video = "0.23"
-gst-plugin-gtk4 = "0.13"
+# =============================================================================
+# GStreamer
+# =============================================================================
+# Target system: GStreamer 1.26.10, gstreamer1.0-gtk4 0.14.4
+#
+# gst-plugin-gtk4 0.14.x uses gtk4 0.10.x and gstreamer 0.24.x
+#
+gstreamer = "0.24"
+gstreamer-video = "0.24"
+gst-plugin-gtk4 = { version = "0.14", features = ["gtk_v4_12"] }
 
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 # HTTP and WebSocket
-reqwest = { version = "0.12", features = ["json"] }
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+reqwest = { version = "0.13", features = ["json"] }
+tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 futures-util = "0.3"
-url = "2"
+url = "2.5"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Stage 2: Install runtime libraries first
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-4-1 \
+    libadwaita-1-0 \
     libgstreamer1.0-0 \
     libgstreamer-plugins-base1.0-0 \
     libgstreamer-plugins-bad1.0-0 \
@@ -37,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Stage 3: Install dev packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-4-dev \
+    libadwaita-1-dev \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
     libgstreamer-plugins-bad1.0-dev \
@@ -56,6 +58,7 @@ RUN echo "=== Build Environment ===" && \
 
 # Verify we have what we need
 RUN pkg-config --exists gtk4 && echo "GTK4: OK" || echo "GTK4: MISSING"
+RUN pkg-config --exists libadwaita-1 && echo "Libadwaita: OK" || echo "Libadwaita: MISSING"
 RUN pkg-config --exists gstreamer-1.0 && echo "GStreamer: OK" || echo "GStreamer: MISSING"
 RUN pkg-config --exists gstreamer-video-1.0 && echo "GStreamer-video: OK" || echo "GStreamer-video: MISSING"
 RUN pkg-config --exists openssl && echo "OpenSSL: OK" || echo "OpenSSL: MISSING"

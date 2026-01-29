@@ -3,13 +3,15 @@
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::api::PhotoInfo;
 use crate::app::AppContext;
 use crate::config;
-use crate::ui::widgets::{self, qr_image::ExpandableQrPanel};
+use crate::ui::widgets::{self, animations, qr_image::ExpandableQrPanel};
 
 
 /// References to updateable widgets in the session screen
@@ -37,6 +39,8 @@ pub struct SessionWidgets {
     pub start_button: gtk::Button,
     /// Phone count label
     pub phone_count_label: gtk::Label,
+    /// Phone count box (parent of label)
+    phone_box: gtk::Box,
     /// End session button
     pub end_button: gtk::Button,
     /// QR panel (expandable)
@@ -47,6 +51,8 @@ pub struct SessionWidgets {
     pub countdown_overlay: gtk::Box,
     /// Countdown label
     pub countdown_label: gtk::Label,
+    /// Active countdown animation
+    countdown_animation: Rc<RefCell<Option<adw::TimedAnimation>>>,
 }
 
 /// Create the unified session screen
@@ -211,26 +217,28 @@ pub fn create_session_screen(
         capture_button,
         start_button,
         phone_count_label,
+        phone_box,
         end_button,
         qr_panel,
         welcome_box,
         countdown_overlay,
         countdown_label,
+        countdown_animation: Rc::new(RefCell::new(None)),
     }
 }
 
 impl SessionWidgets {
-    /// Configure for welcome mode
+    /// Configure for welcome mode (with animations)
     pub fn set_welcome_mode(&self) {
-        // Hide session elements
-        self.phone_count_label.parent().unwrap().set_visible(false);
-        self.end_button.set_visible(false);
-        self.capture_button.set_visible(false);
-        self.photo_strip.set_visible(false);
+        // Fade out session elements
+        animations::fade_out(&self.phone_box, animations::duration::FAST);
+        animations::fade_out(&self.end_button, animations::duration::FAST);
+        animations::fade_out(&self.capture_button, animations::duration::FAST);
+        animations::fade_out(&self.photo_strip, animations::duration::FAST);
         self.countdown_overlay.set_visible(false);
 
-        // Show welcome elements
-        self.welcome_box.set_visible(true);
+        // Fade in welcome elements
+        animations::fade_in(&self.welcome_box, animations::duration::NORMAL);
 
         // Show live video
         self.main_stack.set_visible_child_name("live");
@@ -240,16 +248,16 @@ impl SessionWidgets {
         self.qr_panel.hide_session();
     }
 
-    /// Configure for session mode
+    /// Configure for session mode (with animations)
     pub fn set_session_mode(&self, ctx: &Rc<AppContext>, session_id: &str) {
-        // Hide welcome elements
-        self.welcome_box.set_visible(false);
+        // Fade out welcome elements
+        animations::fade_out(&self.welcome_box, animations::duration::FAST);
 
-        // Show session elements
-        self.phone_count_label.parent().unwrap().set_visible(true);
-        self.end_button.set_visible(true);
-        self.capture_button.set_visible(true);
-        self.photo_strip.set_visible(true);
+        // Fade in session elements with staggered timing
+        animations::fade_in(&self.phone_box, animations::duration::NORMAL);
+        animations::fade_in(&self.end_button, animations::duration::NORMAL);
+        animations::fade_in(&self.capture_button, animations::duration::NORMAL);
+        animations::slide_in_from_bottom(&self.photo_strip, animations::duration::NORMAL);
         self.countdown_overlay.set_visible(false);
 
         // Update QR panel with session QR
@@ -314,7 +322,7 @@ impl SessionWidgets {
             // Incremental update - just add new photos and update selection
             let existing_count = loaded.len();
 
-            // Add any new photos
+            // Add any new photos with slide-in animation
             for (idx, photo) in photos.iter().enumerate().skip(existing_count) {
                 let is_selected = selection == Some(idx);
                 let thumb = create_photo_thumbnail(ctx, photo, is_selected, {
@@ -323,6 +331,9 @@ impl SessionWidgets {
                 });
                 inner.append(&thumb);
                 loaded.push(photo.thumbnail_url.clone());
+
+                // Animate the new thumbnail sliding in
+                animations::slide_in_from_right(&thumb, animations::duration::NORMAL);
             }
 
             // Update selection if changed
@@ -369,6 +380,10 @@ impl SessionWidgets {
 
     /// Show a photo in the main area
     pub fn show_photo(&self, ctx: &Rc<AppContext>, photo: &PhotoInfo) {
+        // Clear the old photo immediately to avoid showing stale content
+        self.photo_picture.set_paintable(None::<&gtk::gdk::Paintable>);
+        self.photo_picture.set_opacity(0.0);
+
         // Only switch if not already on photo
         if self.main_stack.visible_child_name().as_deref() != Some("photo") {
             self.main_stack.set_visible_child_name("photo");
@@ -394,6 +409,8 @@ impl SessionWidgets {
                     ) {
                         let texture = gtk::gdk::Texture::for_pixbuf(&pixbuf);
                         picture.set_paintable(Some(&texture));
+                        // Fade in the new photo
+                        animations::fade_in(&picture, animations::duration::FAST);
                     }
                 }
                 Ok(Err(e)) => log::error!("Failed to load photo: {}", e),
@@ -402,16 +419,61 @@ impl SessionWidgets {
         });
     }
 
-    /// Show countdown overlay
+    /// Show countdown overlay with animated number
     pub fn show_countdown(&self, value: u32) {
-        self.countdown_label.set_text(&value.to_string());
-        self.countdown_overlay.set_visible(true);
+        // Cancel any existing countdown animation
+        if let Some(ref anim) = *self.countdown_animation.borrow() {
+            anim.skip();
+        }
+
+        // Show overlay with fade if not visible
+        if !self.countdown_overlay.is_visible() {
+            self.countdown_overlay.set_opacity(0.0);
+            self.countdown_overlay.set_visible(true);
+            animations::fade_in(&self.countdown_overlay, animations::duration::FAST);
+        }
+
         self.capture_button.set_sensitive(false);
+
+        // Animate the countdown number (scale down + fade in)
+        self.countdown_label.set_text(&value.to_string());
+        self.countdown_label.set_opacity(0.0);
+
+        let label = self.countdown_label.clone();
+        let target = adw::CallbackAnimationTarget::new(move |progress| {
+            // Opacity: quick fade in during first 30%
+            let opacity = if progress < 0.3 {
+                progress / 0.3
+            } else {
+                1.0
+            };
+            label.set_opacity(opacity);
+        });
+
+        let animation = adw::TimedAnimation::builder()
+            .widget(&self.countdown_label)
+            .value_from(0.0)
+            .value_to(1.0)
+            .duration(animations::duration::COUNTDOWN)
+            .easing(adw::Easing::EaseOutCubic)
+            .target(&target)
+            .build();
+
+        animation.play();
+        *self.countdown_animation.borrow_mut() = Some(animation);
     }
 
-    /// Hide countdown overlay
+    /// Hide countdown overlay with fade out
     pub fn hide_countdown(&self) {
-        self.countdown_overlay.set_visible(false);
+        // Cancel any running countdown animation
+        if let Some(ref anim) = *self.countdown_animation.borrow() {
+            anim.skip();
+        }
+        *self.countdown_animation.borrow_mut() = None;
+
+        if self.countdown_overlay.is_visible() {
+            animations::fade_out(&self.countdown_overlay, animations::duration::FAST);
+        }
         self.capture_button.set_sensitive(true);
     }
 
@@ -523,6 +585,7 @@ where
     let picture = gtk::Picture::new();
     picture.set_size_request(100, 100);
     picture.set_content_fit(gtk::ContentFit::Cover);
+    picture.set_opacity(0.0); // Start invisible for fade-in
 
     // Load thumbnail using spawn_future_local to stay on main thread
     let url = config::photo_url(&photo.thumbnail_url);
@@ -543,6 +606,8 @@ where
                 ) {
                     let texture = gtk::gdk::Texture::for_pixbuf(&pixbuf);
                     picture_clone.set_paintable(Some(&texture));
+                    // Fade in the thumbnail once loaded
+                    animations::fade_in(&picture_clone, animations::duration::FAST);
                 }
             }
             Ok(Err(e)) => {
