@@ -1,5 +1,7 @@
 //! WebSocket client for real-time kiosk events.
 
+use std::sync::Arc;
+
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -75,7 +77,13 @@ pub type WsCallback = Box<dyn Fn(WsEvent) + Send + Sync>;
 
 /// Connect to the WebSocket and spawn a task to handle messages
 /// Uses a callback to send events to the main thread
+///
+/// # Arguments
+/// * `runtime` - The Tokio runtime to spawn the WebSocket task on
+/// * `session_id` - The session ID to connect to
+/// * `callback` - Callback function called for each WebSocket event
 pub fn connect<F>(
+    runtime: Arc<tokio::runtime::Runtime>,
     session_id: String,
     callback: F,
 ) -> WsHandle
@@ -85,7 +93,7 @@ where
     let (shutdown_tx, mut shutdown_rx) = tokio_mpsc::channel::<()>(1);
     let callback = std::sync::Arc::new(callback);
 
-    tokio::spawn(async move {
+    runtime.spawn(async move {
         loop {
             let url = config::ws_url(&session_id);
             log::info!("Connecting to WebSocket: {}", url);

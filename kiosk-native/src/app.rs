@@ -186,9 +186,10 @@ impl AppContext {
 
             KioskCommand::ConnectWebSocket { session_id } => {
                 let tx = self.message_tx.clone();
+                let runtime = self.runtime.clone();
 
                 // Connect to WebSocket with a callback that dispatches events
-                let handle = crate::api::websocket::connect(session_id, move |ws_event| {
+                let handle = crate::api::websocket::connect(runtime, session_id, move |ws_event| {
                     let event = match ws_event {
                         WsEvent::Connected => KioskEvent::WebSocketConnected,
                         WsEvent::Disconnected => KioskEvent::WebSocketDisconnected,

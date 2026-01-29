@@ -1,23 +1,60 @@
 #!/bin/bash
-set -e
+# Build the PicPop server (FastAPI backend + React frontend bundle)
+#
+# This script:
+#   1. Builds the React frontend with Bun (outputs to frontend/dist/)
+#   2. The backend (Python/FastAPI) needs no compilation
+#
+# The built frontend is served by FastAPI as static files.
+#
+# Usage: ./scripts/build-server.sh
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$(dirname "$0")/common.sh"
 
-# Colors
-GREEN='\033[0;32m'
-NC='\033[0m'
+parse_common_flags "$@"
 
-log() { echo -e "${GREEN}[+]${NC} $1"; }
+if $SHOW_HELP; then
+    cat << 'EOF'
+Build the PicPop server (FastAPI backend + React frontend)
 
-cd "$PROJECT_ROOT"
+Usage: ./scripts/build-server.sh [options]
 
-log "Building frontend..."
-cd frontend
+Options:
+    -h, --help      Show this help message
+
+This script builds the React frontend for mobile phones using Bun.
+The Python backend requires no compilation.
+
+Output:
+    frontend/dist/   Built React app (served by FastAPI)
+EOF
+    exit 0
+fi
+
+header "Building PicPop Server"
+
+# Check for bun
+require_cmd bun
+
+# Build frontend
+log "Building React frontend..."
+cd "$FRONTEND_DIR"
+
+log "Installing dependencies..."
 bun install
+
+log "Running production build..."
 bun run build
 
-log "Frontend built to frontend/dist/"
-ls -lh dist/
+# Verify output
+if [[ -d "$FRONTEND_DIR/dist" ]]; then
+    log "Frontend built successfully!"
+    info "Output: $FRONTEND_DIR/dist/"
+    ls -lh "$FRONTEND_DIR/dist/" | head -10
+else
+    error "Frontend build failed - dist/ directory not found"
+fi
 
-log "Build complete! Ready to deploy with ./scripts/deploy-server.sh"
+echo ""
+log "Server build complete!"
+info "Backend (Python) requires no compilation - will be deployed as source"

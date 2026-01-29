@@ -1,0 +1,99 @@
+# Cross-compilation image for GTK4 + GStreamer targeting aarch64 (Radxa Zero 3W)
+#
+# Target: Radxa Zero 3W running Armbian (Debian Forky/Sid)
+#   - CPU: ARM Cortex-A55 (ARMv8.2-A)
+#   - GPU: Mali-G52 (Panfrost)
+#   - GTK4: 4.20.x, GStreamer: 1.26.x, GLIBC: 2.42
+#
+# Using Debian Trixie (testing) to get closer library versions to the target.
+#
+# Strategy: Install arm64 -dev packages directly using multiarch.
+# This is cleaner than extracting .pc files manually.
+#
+FROM debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base build tools and cross-compiler
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    pkg-config \
+    git \
+    ca-certificates \
+    crossbuild-essential-arm64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add arm64 architecture for multiarch
+RUN dpkg --add-architecture arm64
+
+# Install arm64 dev packages for cross-compilation
+# These provide both headers and .pc files for the target architecture
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Core arm64 development libraries
+    libgtk-4-dev:arm64 \
+    libgstreamer1.0-dev:arm64 \
+    libgstreamer-plugins-base1.0-dev:arm64 \
+    libgstreamer-plugins-bad1.0-dev:arm64 \
+    libssl-dev:arm64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Add the aarch64 target
+RUN rustup target add aarch64-unknown-linux-gnu
+
+# Create pkg-config wrapper for arm64 that searches the correct paths
+RUN printf '#!/bin/sh\n\
+export PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig"\n\
+export PKG_CONFIG_LIBDIR="/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig"\n\
+export PKG_CONFIG_SYSROOT_DIR="/"\n\
+exec pkg-config "$@"\n' > /usr/local/bin/aarch64-linux-gnu-pkg-config \
+    && chmod +x /usr/local/bin/aarch64-linux-gnu-pkg-config
+
+# Print library versions for verification
+RUN echo "=== Build Environment ===" && \
+    echo "Debian: $(cat /etc/debian_version)" && \
+    echo "GLIBC: $(ldd --version | head -1)" && \
+    echo "GCC: $(aarch64-linux-gnu-gcc --version | head -1)"
+
+# Verify pkg-config can find arm64 libraries
+RUN echo "=== Testing arm64 pkg-config ===" && \
+    aarch64-linux-gnu-pkg-config --modversion gtk4 && \
+    aarch64-linux-gnu-pkg-config --modversion gstreamer-1.0 && \
+    aarch64-linux-gnu-pkg-config --modversion openssl
+
+# Cross-compilation environment variables
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+ENV CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
+ENV AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
+
+# pkg-config configuration for cross-compilation
+ENV PKG_CONFIG=aarch64-linux-gnu-pkg-config
+ENV PKG_CONFIG_ALLOW_CROSS=1
+
+# OpenSSL configuration (openssl-sys crate)
+ENV OPENSSL_DIR=/usr
+ENV OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu
+ENV OPENSSL_INCLUDE_DIR=/usr/include
+
+# =============================================================================
+# Rust optimization for Cortex-A55 (ARMv8.2-A)
+# =============================================================================
+# Target CPU features available on Radxa Zero 3W:
+#   - aes, sha2: Hardware crypto
+#   - crc: CRC32 instructions  
+#   - lse: Large System Extensions (better atomics)
+#   - fp16: Half-precision float
+#   - dotprod: Dot product (ARMv8.2)
+#   - rcpc: Release consistency
+#
+# We use cortex-a55 as the target CPU which enables all appropriate features.
+# This generates code optimized specifically for the Radxa's CPU.
+#
+ENV RUSTFLAGS="-C target-cpu=cortex-a55 -C target-feature=+aes,+sha2,+crc"
+
+WORKDIR /project

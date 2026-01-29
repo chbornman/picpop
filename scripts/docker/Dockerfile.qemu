@@ -1,0 +1,82 @@
+# Cross-compilation using QEMU user-mode emulation
+# This is SLOWER but more reliable than multiarch when dep conflicts occur
+#
+# Target: Radxa Zero 3W running Armbian (Debian Forky/Sid)
+#   - CPU: ARM Cortex-A55 (ARMv8.2-A)
+#   - GPU: Mali-G52 (Panfrost)
+#   - GTK4: 4.20.x, GStreamer: 1.26.x, GLIBC: 2.42
+#
+# Requires: docker run --privileged or binfmt_misc configured on host
+# Setup on host: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+#
+# Using Debian Trixie (testing) to closely match Radxa's library versions.
+#
+# Platform is set via --platform flag when building
+ARG TARGETPLATFORM=linux/arm64
+FROM debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Stage 1: Basic build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    build-essential \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Install runtime libraries first
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgtk-4-1 \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    libgstreamer-plugins-bad1.0-0 \
+    libssl3t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 3: Install dev packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgtk-4-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
+    libssl-dev \
+    || echo "Some packages had errors, checking if essentials installed..."
+
+# Print environment info
+RUN echo "=== Build Environment ===" && \
+    echo "Debian: $(cat /etc/debian_version)" && \
+    echo "GLIBC: $(ldd --version | head -1)" && \
+    echo "GCC: $(gcc --version | head -1)" && \
+    echo "" && \
+    echo "=== Library Versions ===" && \
+    echo "GTK4: $(pkg-config --modversion gtk4 2>/dev/null || echo 'MISSING')" && \
+    echo "GStreamer: $(pkg-config --modversion gstreamer-1.0 2>/dev/null || echo 'MISSING')" && \
+    echo "OpenSSL: $(pkg-config --modversion openssl 2>/dev/null || echo 'MISSING')"
+
+# Verify we have what we need
+RUN pkg-config --exists gtk4 && echo "GTK4: OK" || echo "GTK4: MISSING"
+RUN pkg-config --exists gstreamer-1.0 && echo "GStreamer: OK" || echo "GStreamer: MISSING"
+RUN pkg-config --exists gstreamer-video-1.0 && echo "GStreamer-video: OK" || echo "GStreamer-video: MISSING"
+RUN pkg-config --exists openssl && echo "OpenSSL: OK" || echo "OpenSSL: MISSING"
+RUN ls /usr/include/gtk-4.0/gtk/gtk.h && echo "GTK4 headers: OK" || echo "GTK4 headers: MISSING"
+
+# Install Rust (arm64 native, runs under QEMU)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# =============================================================================
+# Rust optimization for Cortex-A55 (ARMv8.2-A)
+# =============================================================================
+# Target CPU features available on Radxa Zero 3W:
+#   - aes, sha2: Hardware crypto acceleration
+#   - crc: CRC32 instructions
+#   - lse: Large System Extensions (better atomics)
+#   - fp16: Half-precision float
+#   - dotprod: Dot product (ARMv8.2)
+#
+# We use cortex-a55 as the target CPU which enables all appropriate features.
+#
+ENV RUSTFLAGS="-C target-cpu=cortex-a55 -C target-feature=+aes,+sha2,+crc"
+
+WORKDIR /project

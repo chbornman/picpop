@@ -39,8 +39,8 @@ sudo apt install -y \
     python3 python3-pip python3-venv \
     hostapd dnsmasq \
     gphoto2 libgphoto2-dev \
-    libwebkit2gtk-4.1-dev \
-    libgtk-3-dev
+    libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
 ```
 
 ### 2. Configure WiFi Access Point
@@ -104,10 +104,10 @@ sudo systemctl enable picpop picpop-kiosk
 On the Radxa device (or cross-compile):
 
 ```bash
-cd kiosk
-npm install
-npm run tauri build
-sudo cp src-tauri/target/release/picpop-kiosk /opt/picpop/kiosk/
+cd kiosk-native
+cargo build --release
+sudo cp target/release/picpop-kiosk /home/kiosk/
+sudo chown kiosk:kiosk /home/kiosk/picpop-kiosk
 ```
 
 ## Configuration Files
@@ -182,8 +182,8 @@ sudo cp -r backend/* /opt/picpop/
 sudo -u picpop /opt/picpop/.venv/bin/pip install -e /opt/picpop
 
 # Rebuild kiosk (if changed)
-cd kiosk && npm run tauri build
-sudo cp src-tauri/target/release/picpop-kiosk /opt/picpop/kiosk/
+cd kiosk-native && cargo build --release
+sudo cp target/release/picpop-kiosk /home/kiosk/
 
 # Restart services
 sudo systemctl restart picpop picpop-kiosk

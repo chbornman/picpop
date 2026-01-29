@@ -27,16 +27,22 @@ impl MainWindow {
             .default_height(800)
             .build();
 
-        // Make fullscreen for kiosk mode
-        window.fullscreen();
-
-        // Hide cursor for kiosk
-        window.connect_realize(|window| {
-            if let Some(surface) = window.surface() {
-                if let Some(cursor) = gtk::gdk::Cursor::from_name("none", None) {
-                    surface.set_cursor(Some(&cursor));
+        // Make fullscreen and hide cursor after window is mapped
+        // Use connect_map instead of connect_realize to ensure Wayland surface is ready
+        // This avoids "surface->initialized" assertion failures in Cage/wlroots
+        window.connect_map(|window| {
+            // Delay fullscreen slightly to ensure Wayland surface is fully initialized
+            let window = window.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+                // Hide cursor for kiosk
+                if let Some(surface) = window.surface() {
+                    if let Some(cursor) = gtk::gdk::Cursor::from_name("none", None) {
+                        surface.set_cursor(Some(&cursor));
+                    }
                 }
-            }
+                // Fullscreen after surface is ready
+                window.fullscreen();
+            });
         });
 
         // Create stack for screen transitions
@@ -47,7 +53,9 @@ impl MainWindow {
         window.set_child(Some(&stack));
 
         // Initialize video pipeline
-        let video_paintable = ctx.init_video().expect("Failed to initialize video pipeline");
+        let video_paintable = ctx
+            .init_video()
+            .expect("Failed to initialize video pipeline");
 
         let main_window = Rc::new(Self {
             window,
@@ -167,12 +175,10 @@ impl MainWindow {
         }
 
         let ctx = self.ctx.clone();
-        let screen = welcome::create_welcome_screen(
-            &self.ctx,
-            &self.video_paintable,
-            false,
-            move || ctx.send_event(KioskEvent::StartSession),
-        );
+        let screen =
+            welcome::create_welcome_screen(&self.ctx, &self.video_paintable, false, move || {
+                ctx.send_event(KioskEvent::StartSession)
+            });
         self.stack.add_named(&screen, Some("welcome"));
         self.stack.set_visible_child_name("welcome");
 
@@ -260,8 +266,12 @@ impl MainWindow {
 
     /// Show lightbox for a photo
     fn show_lightbox(self: &Rc<Self>, index: usize) {
-        let photos = self.ctx.state_machine.borrow()
-            .session.as_ref()
+        let photos = self
+            .ctx
+            .state_machine
+            .borrow()
+            .session
+            .as_ref()
             .map(|s| s.photos.clone())
             .unwrap_or_default();
 
@@ -291,8 +301,12 @@ impl MainWindow {
 
     /// Update lightbox to show a different photo
     fn update_lightbox(&self, index: usize) {
-        let photos = self.ctx.state_machine.borrow()
-            .session.as_ref()
+        let photos = self
+            .ctx
+            .state_machine
+            .borrow()
+            .session
+            .as_ref()
             .map(|s| s.photos.clone())
             .unwrap_or_default();
 

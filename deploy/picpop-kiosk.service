@@ -1,4 +1,4 @@
-# PicPop Kiosk Application Service (Cage + Wayland)
+# PicPop Kiosk Application Service (Cage + Native GTK4)
 # Copy to /etc/systemd/system/picpop-kiosk.service on the Radxa device
 # Then run: systemctl daemon-reload && systemctl enable picpop-kiosk
 
@@ -15,11 +15,11 @@ Group=kiosk
 # XDG runtime directory (required for Wayland)
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 
-# WebKitGTK GPU compositing (try enabling for better performance)
-# Uncomment these if GPU causes crashes/glitches:
-# Environment="WEBKIT_DISABLE_COMPOSITING_MODE=1"
-# Environment="WEBKIT_DISABLE_DMABUF_RENDERER=1"
+# GTK/GStreamer settings
 Environment="GDK_BACKEND=wayland"
+Environment="GTK_A11Y=none"
+Environment="GST_DEBUG=2"
+Environment="RUST_LOG=info"
 
 # Mali GPU hints
 Environment="MESA_GL_VERSION_OVERRIDE=3.3"
@@ -33,14 +33,15 @@ Environment="XCURSOR_PATH=/home/kiosk/.local/share/icons"
 # Workaround for cursor issues on some ARM GPUs
 Environment="WLR_NO_HARDWARE_CURSORS=1"
 
-WorkingDirectory=/opt/picpop/kiosk
+WorkingDirectory=/home/kiosk
 
-# Launch Cage with the Tauri app (dbus-run-session prevents GTK startup delays)
-ExecStart=/usr/bin/dbus-run-session /opt/picpop/kiosk/start-kiosk.sh
+# Launch Cage with the native GTK4 kiosk
+ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -s /home/kiosk/picpop-kiosk
 
 # Restart on failure
 Restart=always
 RestartSec=5
+TimeoutStopSec=5
 
 # Logging
 StandardOutput=journal

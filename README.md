@@ -18,7 +18,7 @@ A fully offline-capable interactive photo booth system designed for the **Radxa 
 │                           RADXA ZERO 3W                                     │
 │                                                                             │
 │  ┌──────────────────┐    ┌──────────────────┐    ┌────────────────────┐    │
-│  │   Tauri Kiosk    │    │  FastAPI Server  │    │   WiFi Hotspot     │    │
+│  │   GTK4 Kiosk     │    │  FastAPI Server  │    │   WiFi Hotspot     │    │
 │  │   (Touchscreen)  │◄──►│   (Port 8000)    │◄──►│   + Captive Portal │    │
 │  │                  │ WS │                  │    │   (hostapd/dnsmasq)│    │
 │  │  - QR Display    │    │  - Sessions      │    │                    │    │
@@ -83,17 +83,16 @@ A fully offline-capable interactive photo booth system designed for the **Radxa 
 
 ```
 picpop/
-├── kiosk/                      # Tauri touchscreen app
-│   ├── src/                    # React UI for touchscreen
-│   │   ├── screens/
-│   │   │   ├── QRScreen.tsx    # Display QR code, waiting for connection
-│   │   │   ├── ReadyScreen.tsx # Connected, ready to capture
-│   │   │   ├── CountdownScreen.tsx
-│   │   │   └── CaptureScreen.tsx
-│   │   └── ...
-│   └── src-tauri/              # Rust backend (minimal)
-│       └── src/
-│           └── main.rs
+├── kiosk-native/               # Native GTK4 touchscreen app
+│   ├── src/                    # Rust application
+│   │   ├── main.rs             # Entry point
+│   │   ├── ui/                 # GTK4 widgets
+│   │   │   ├── window.rs       # Main window
+│   │   │   ├── welcome.rs      # QR code display
+│   │   │   └── session.rs      # Photo session UI
+│   │   ├── api/                # HTTP/WebSocket clients
+│   │   └── video/              # GStreamer video pipeline
+│   └── Cargo.toml
 │
 ├── backend/                     # FastAPI backend
 │   ├── app/
@@ -166,7 +165,7 @@ picpop/
 
 ### Kiosk Display
 
-- **Tauri 2.x** desktop app
+- **Native GTK4** application with GStreamer
 - Fullscreen, no window decorations
 - Touch-optimized UI with large buttons
 - Connects to local FastAPI server via WebSocket
@@ -283,9 +282,10 @@ For maximum compatibility, we display a two-step QR:
 
 ### Prerequisites
 
-- Rust (for Tauri)
+- Rust (for native kiosk)
 - Node.js 20+ / Bun 1.x
 - Python 3.11+
+- GTK4 and GStreamer development libraries
 - gphoto2 libraries (`libgphoto2-dev`)
 
 ### Setup
@@ -299,9 +299,9 @@ cd backend
 uv sync
 uv run uvicorn app.main:app --reload
 
-# Kiosk (development)
-cd kiosk
-bun run tauri dev
+# Kiosk (development - requires GTK4/GStreamer)
+cd kiosk-native
+cargo run
 
 # Frontend (development)
 cd frontend
@@ -311,9 +311,9 @@ bun run dev
 ### Build for Radxa
 
 ```bash
-# Build kiosk (Tauri app)
-cd kiosk
-bun run tauri build
+# Build kiosk (native GTK4 app)
+cd kiosk-native
+cargo build --release
 
 # Build frontend (phone web app)
 cd frontend
@@ -324,11 +324,11 @@ bun run build
 
 ### Deployed File Locations
 
-| Component            | Source                                        | Deployed Location                |
-| -------------------- | --------------------------------------------- | -------------------------------- |
-| Backend (Python)     | `backend/`                                    | `/opt/picpop/`                   |
-| Kiosk (Tauri binary) | `kiosk/src-tauri/target/release/picpop-kiosk` | `/opt/picpop/kiosk/picpop-kiosk` |
-| Frontend (phone web) | `frontend/dist/`                              | `/opt/mobile/dist/`              |
+| Component            | Source                                            | Deployed Location    |
+| -------------------- | ------------------------------------------------- | -------------------- |
+| Backend (Python)     | `backend/`                                        | `/opt/picpop/`       |
+| Kiosk (GTK4 binary)  | `kiosk-native/target/release/picpop-kiosk`        | `/home/kiosk/`       |
+| Frontend (phone web) | `frontend/dist/`                                  | `/opt/mobile/dist/`  |
 
 ### Initial Setup
 
@@ -375,9 +375,9 @@ sudo systemctl enable picpop picpop-kiosk
 sudo cp -r backend/* /opt/picpop/
 sudo chown -R picpop:picpop /opt/picpop
 
-# Build and copy kiosk
-cd kiosk && bun run tauri build
-sudo cp src-tauri/target/release/picpop-kiosk /opt/picpop/kiosk/
+# Build and copy kiosk (or use scripts/build-native-kiosk.sh)
+cd kiosk-native && cargo build --release
+sudo cp target/release/picpop-kiosk /home/kiosk/
 
 # Build and copy frontend
 cd ../frontend && bun run build
@@ -405,7 +405,7 @@ After making changes, use the deploy script to rebuild and restart services:
 # Deploy frontend (builds then deploys)
 ./deploy.sh frontend
 
-# Deploy kiosk (builds Tauri - takes a few minutes)
+# Deploy kiosk (builds native GTK4 app)
 ./deploy.sh kiosk
 
 # Deploy everything
@@ -477,7 +477,7 @@ iOS requires HTTPS for the Web Share API. In offline mode without valid certific
 
 This project combines and improves upon:
 
-- **picpop_og** - Tauri kiosk app architecture, offline upload queue design
+- **picpop_og** - Original kiosk app architecture, offline upload queue design
 - **picpop_simple** - gphoto2 camera integration, FastAPI backend, React state machine
 
 ## License

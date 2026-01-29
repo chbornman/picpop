@@ -41,8 +41,13 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Tauri
-kiosk/src-tauri/target/
+# Legacy Tauri kiosk (removed, use kiosk-native)
+kiosk/
+
+# Cargo cache directories (created by Docker builds)
+.cargo-cross/
+.cargo-qemu/
+.cargo/
 
 # Testing
 coverage/
