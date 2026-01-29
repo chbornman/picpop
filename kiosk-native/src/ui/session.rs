@@ -93,6 +93,9 @@ pub fn create_session_screen(
     main_stack.set_visible_child_name("live");
     overlay.set_child(Some(&main_stack));
 
+    // Click handler on main area to collapse QR panel when expanded
+    // We'll connect this after qr_panel is created
+
     // === Floating phone count (top-left) - session only ===
     let phone_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     phone_box.add_css_class("floating-status");
@@ -165,6 +168,14 @@ pub fn create_session_screen(
     // === QR panel (top-right, small and expandable) ===
     let qr_panel = ExpandableQrPanel::new(ctx);
     overlay.add_overlay(&qr_panel.panel);
+
+    // Click on main area collapses QR panel
+    let qr_panel_for_main = qr_panel.clone();
+    let main_gesture = gtk::GestureClick::new();
+    main_gesture.connect_released(move |_, _, _, _| {
+        qr_panel_for_main.collapse();
+    });
+    main_stack.add_controller(main_gesture);
 
     // === Photo strip (bottom) - session only ===
     let photo_strip = gtk::ScrolledWindow::new();
