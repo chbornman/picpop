@@ -36,6 +36,10 @@ fn main() {
             .expect("Failed to create tokio runtime"),
     );
 
+    // Set cursor theme to invisible before GTK init
+    std::env::set_var("XCURSOR_THEME", "InvisibleCursor");
+    std::env::set_var("XCURSOR_SIZE", "1");
+
     // Create GTK application
     let app = gtk::Application::builder()
         .application_id("com.picpop.kiosk")

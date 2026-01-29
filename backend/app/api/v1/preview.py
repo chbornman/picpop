@@ -25,6 +25,12 @@ async def mjpeg_stream(fps: int = 30) -> AsyncGenerator[bytes, None]:
     frame_interval = 1.0 / fps if fps > 0 else 0
     frame_count = 0
 
+    # Exponential backoff state
+    connect_retry_delay = 1.0
+    max_connect_retry_delay = 5.0
+    error_retry_delay = 0.5
+    max_error_retry_delay = 5.0
+
     logger.info(f"Starting preview stream at {fps} fps")
 
     try:
@@ -36,12 +42,22 @@ async def mjpeg_stream(fps: int = 30) -> AsyncGenerator[bytes, None]:
             if not camera.is_connected():
                 connected = await camera.connect()
                 if not connected:
-                    await asyncio.sleep(1.0)
+                    logger.warning(f"Camera connect failed, retrying in {connect_retry_delay:.1f}s")
+                    await asyncio.sleep(connect_retry_delay)
+                    # Exponential backoff for connection failures
+                    connect_retry_delay = min(connect_retry_delay * 1.5, max_connect_retry_delay)
                     continue
+                else:
+                    # Reset backoff on successful connection
+                    connect_retry_delay = 1.0
+                    error_retry_delay = 0.5
 
             try:
                 frame = await camera.get_preview_frame()
                 frame_count += 1
+
+                # Reset error backoff on successful frame
+                error_retry_delay = 0.5
 
                 if frame_count == 1:
                     logger.info("First preview frame captured")
@@ -59,8 +75,10 @@ async def mjpeg_stream(fps: int = 30) -> AsyncGenerator[bytes, None]:
                     await asyncio.sleep(frame_interval)
 
             except CameraError as e:
-                logger.warning(f"Preview frame error: {e}")
-                await asyncio.sleep(0.5)
+                logger.warning(f"Preview frame error: {e}, retrying in {error_retry_delay:.1f}s")
+                await asyncio.sleep(error_retry_delay)
+                # Exponential backoff for preview errors
+                error_retry_delay = min(error_retry_delay * 1.5, max_error_retry_delay)
             except Exception as e:
                 logger.error(f"Unexpected preview error: {e}")
                 await asyncio.sleep(0.1)
@@ -127,10 +145,12 @@ async def single_frame():
 async def status():
     """Get camera status."""
     camera = get_camera(settings.camera_backend)
-    return JSONResponse({
-        "connected": camera.is_connected(),
-        "previewPaused": is_preview_paused(),
-    })
+    return JSONResponse(
+        {
+            "connected": camera.is_connected(),
+            "previewPaused": is_preview_paused(),
+        }
+    )
 
 
 @router.post("/connect")

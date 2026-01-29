@@ -4,21 +4,12 @@ use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::config;
 
-#[derive(Error, Debug)]
-pub enum WsError {
-    #[error("Connection failed: {0}")]
-    Connection(#[from] tokio_tungstenite::tungstenite::Error),
-    #[error("URL parse error: {0}")]
-    Url(#[from] url::ParseError),
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
-}
+
 
 /// Events received from the WebSocket
 #[derive(Debug, Clone)]
@@ -31,6 +22,8 @@ pub enum WsEvent {
     Countdown(u32),
     /// A photo is ready
     PhotoReady(PhotoInfo),
+    /// Photos are being processed
+    Processing,
     /// Capture sequence completed
     CaptureComplete,
     /// Capture failed with error message
@@ -71,9 +64,6 @@ impl WsHandle {
         let _ = self.shutdown_tx.send(()).await;
     }
 }
-
-/// Callback type for WebSocket events
-pub type WsCallback = Box<dyn Fn(WsEvent) + Send + Sync>;
 
 /// Connect to the WebSocket and spawn a task to handle messages
 /// Uses a callback to send events to the main thread
@@ -188,6 +178,7 @@ fn parse_message(text: &str) -> Option<WsEvent> {
                 serde_json::from_value::<PhotoInfo>(d).ok()
             }).map(WsEvent::PhotoReady)
         }
+        "processing" => Some(WsEvent::Processing),
         "capture_complete" => Some(WsEvent::CaptureComplete),
         "capture_failed" => {
             let error = msg.data

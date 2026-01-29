@@ -5,24 +5,19 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4 as gtk;
-use gtk4::prelude::*;
 use tokio::sync::mpsc;
 
 use crate::api::{ApiClient, WsEvent, WsHandle};
 use crate::state::{KioskCommand, KioskEvent, KioskStateMachine};
 use crate::video::VideoPipeline;
 
-// Re-export for convenience
-pub use crate::api::PhotoInfo;
-pub use crate::state::{KioskState, SessionData};
+
 
 /// Messages sent from async tasks to the GTK main loop
 #[derive(Debug, Clone)]
 pub enum AppMessage {
     /// Process a kiosk event through the state machine
     Event(KioskEvent),
-    /// Image loaded from network (for caching)
-    ImageLoaded { url: String, bytes: Vec<u8> },
 }
 
 /// Sender that can dispatch messages to the GTK main loop from any thread
@@ -75,35 +70,8 @@ impl AppContext {
         let pipeline = VideoPipeline::new()?;
         let paintable = pipeline.paintable().clone();
 
-        // Set up error handling on the GStreamer bus
-        pipeline.setup_bus_watch(move |_bus, msg| {
-            use gstreamer::MessageView;
-            match msg.view() {
-                MessageView::Error(err) => {
-                    log::error!(
-                        "GStreamer error: {} ({:?})",
-                        err.error(),
-                        err.debug()
-                    );
-                }
-                MessageView::Eos(_) => {
-                    log::info!("End of stream");
-                }
-                MessageView::StateChanged(state) => {
-                    if let Some(src) = msg.src() {
-                        if src.type_() == gstreamer::Pipeline::static_type() {
-                            log::debug!(
-                                "Pipeline state: {:?} -> {:?}",
-                                state.old(),
-                                state.current()
-                            );
-                        }
-                    }
-                }
-                _ => {}
-            }
-            glib::ControlFlow::Continue
-        });
+        // Set up error handling with automatic reconnection
+        pipeline.setup_bus_watch_with_reconnect();
 
         pipeline.play()?;
         *self.video.borrow_mut() = Some(pipeline);
@@ -197,6 +165,7 @@ impl AppContext {
                         WsEvent::PhoneDisconnected => KioskEvent::PhoneDisconnected,
                         WsEvent::Countdown(value) => KioskEvent::CountdownTick { value },
                         WsEvent::PhotoReady(photo) => KioskEvent::PhotoReady { photo },
+                        WsEvent::Processing => KioskEvent::Processing,
                         WsEvent::CaptureComplete => KioskEvent::CaptureComplete,
                         WsEvent::CaptureFailed(error) => KioskEvent::CaptureFailed { error },
                         WsEvent::SessionEnded => KioskEvent::SessionEnded,
@@ -232,30 +201,4 @@ impl AppContext {
         }
     }
 
-    /// Get current state (convenience accessor)
-    pub fn state(&self) -> KioskState {
-        self.state_machine.borrow().state
-    }
-
-    /// Get session data (convenience accessor)
-    pub fn session(&self) -> Option<SessionData> {
-        self.state_machine.borrow().session.clone()
-    }
-
-    /// Load an image from URL asynchronously
-    pub fn load_image(&self, url: String) {
-        let tx = self.message_tx.clone();
-        let api = self.api.clone();
-
-        self.runtime.spawn(async move {
-            match api.fetch_image(&url).await {
-                Ok(bytes) => {
-                    tx.send(AppMessage::ImageLoaded { url, bytes });
-                }
-                Err(e) => {
-                    log::error!("Failed to load image {}: {}", url, e);
-                }
-            }
-        });
-    }
 }

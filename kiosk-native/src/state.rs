@@ -11,14 +11,12 @@ use crate::api::PhotoInfo;
 pub enum KioskState {
     /// Welcome screen - waiting for user to start a session
     Welcome,
-    /// Active session - user can capture photos
+    /// Active session - user can capture photos and view them
     Session,
     /// Countdown in progress before capture
     Countdown,
-    /// Photo being captured
-    Capturing,
-    /// Viewing a photo in lightbox
-    Lightbox,
+    /// Processing photos after capture
+    Processing,
 }
 
 /// Session data (GTK-free)
@@ -36,9 +34,10 @@ pub enum KioskEvent {
     StartSession,
     EndSession,
     TriggerCapture,
-    OpenLightbox(usize),
-    CloseLightbox,
-    NavigateLightbox(usize),
+
+    // Photo viewing (in-place, no separate lightbox)
+    SelectPhoto(usize), // View a photo from strip
+    SelectLive,         // Return to live video view
 
     // Backend responses
     SessionCreated { id: String },
@@ -50,6 +49,7 @@ pub enum KioskEvent {
     PhoneDisconnected,
     CountdownTick { value: u32 },
     PhotoReady { photo: PhotoInfo },
+    Processing,
     CaptureComplete,
     CaptureFailed { error: String },
     WebSocketConnected,
@@ -84,7 +84,8 @@ pub struct KioskStateMachine {
     pub state: KioskState,
     pub session: Option<SessionData>,
     pub countdown_value: Option<u32>,
-    pub lightbox_index: Option<usize>,
+    /// Which photo is being viewed (None = live video view)
+    pub viewing_photo: Option<usize>,
     pub error: Option<String>,
     pub is_loading: bool,
 }
@@ -101,10 +102,15 @@ impl KioskStateMachine {
             state: KioskState::Welcome,
             session: None,
             countdown_value: None,
-            lightbox_index: None,
+            viewing_photo: None,
             error: None,
             is_loading: false,
         }
+    }
+
+    /// Check if currently viewing live video (not a photo)
+    pub fn is_live_view(&self) -> bool {
+        self.viewing_photo.is_none()
     }
 
     /// Process an event and return commands to execute
@@ -124,6 +130,7 @@ impl KioskStateMachine {
             KioskEvent::SessionCreated { id } => {
                 self.state = KioskState::Session;
                 self.is_loading = false;
+                self.viewing_photo = None;
                 self.session = Some(SessionData {
                     id: id.clone(),
                     phone_count: 0,
@@ -152,12 +159,13 @@ impl KioskStateMachine {
                 self.state = KioskState::Welcome;
                 self.session = None;
                 self.countdown_value = None;
-                self.lightbox_index = None;
+                self.viewing_photo = None;
                 commands.push(KioskCommand::UpdateUI);
             }
 
             KioskEvent::TriggerCapture => {
-                if self.state == KioskState::Session {
+                // Only allow capture from live view in session state
+                if self.state == KioskState::Session && self.is_live_view() {
                     if let Some(ref session) = self.session {
                         commands.push(KioskCommand::TriggerCapture {
                             session_id: session.id.clone(),
@@ -183,6 +191,7 @@ impl KioskStateMachine {
             KioskEvent::CountdownTick { value } => {
                 self.state = KioskState::Countdown;
                 self.countdown_value = Some(value);
+                self.viewing_photo = None; // Ensure we're on live view during countdown
                 commands.push(KioskCommand::UpdateUI);
             }
 
@@ -193,9 +202,16 @@ impl KioskStateMachine {
                 }
             }
 
+            KioskEvent::Processing => {
+                self.state = KioskState::Processing;
+                self.countdown_value = None;
+                commands.push(KioskCommand::UpdateUI);
+            }
+
             KioskEvent::CaptureComplete => {
                 self.state = KioskState::Session;
                 self.countdown_value = None;
+                // Stay on live view after capture
                 commands.push(KioskCommand::UpdateUI);
             }
 
@@ -207,34 +223,21 @@ impl KioskStateMachine {
                 commands.push(KioskCommand::UpdateUI);
             }
 
-            KioskEvent::OpenLightbox(index) => {
+            KioskEvent::SelectPhoto(index) => {
                 if self.state == KioskState::Session {
                     if let Some(ref session) = self.session {
                         if index < session.photos.len() {
-                            self.state = KioskState::Lightbox;
-                            self.lightbox_index = Some(index);
+                            self.viewing_photo = Some(index);
                             commands.push(KioskCommand::UpdateUI);
                         }
                     }
                 }
             }
 
-            KioskEvent::CloseLightbox => {
-                if self.state == KioskState::Lightbox {
-                    self.state = KioskState::Session;
-                    self.lightbox_index = None;
+            KioskEvent::SelectLive => {
+                if self.state == KioskState::Session && self.viewing_photo.is_some() {
+                    self.viewing_photo = None;
                     commands.push(KioskCommand::UpdateUI);
-                }
-            }
-
-            KioskEvent::NavigateLightbox(index) => {
-                if self.state == KioskState::Lightbox {
-                    if let Some(ref session) = self.session {
-                        if index < session.photos.len() {
-                            self.lightbox_index = Some(index);
-                            commands.push(KioskCommand::UpdateUI);
-                        }
-                    }
                 }
             }
 
@@ -250,24 +253,6 @@ impl KioskStateMachine {
 
         commands
     }
-
-    /// Get the current photo count
-    pub fn photo_count(&self) -> usize {
-        self.session.as_ref().map(|s| s.photos.len()).unwrap_or(0)
-    }
-
-    /// Get photos from current session
-    pub fn photos(&self) -> &[PhotoInfo] {
-        self.session
-            .as_ref()
-            .map(|s| s.photos.as_slice())
-            .unwrap_or(&[])
-    }
-
-    /// Check if we can capture
-    pub fn can_capture(&self) -> bool {
-        self.state == KioskState::Session && self.session.is_some()
-    }
 }
 
 #[cfg(test)]
@@ -279,6 +264,7 @@ mod tests {
         let sm = KioskStateMachine::new();
         assert_eq!(sm.state, KioskState::Welcome);
         assert!(sm.session.is_none());
+        assert!(sm.is_live_view());
     }
 
     #[test]
@@ -288,7 +274,9 @@ mod tests {
         // Start session
         let cmds = sm.process(KioskEvent::StartSession);
         assert!(sm.is_loading);
-        assert!(cmds.iter().any(|c| matches!(c, KioskCommand::CreateSession)));
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, KioskCommand::CreateSession)));
 
         // Session created
         let cmds = sm.process(KioskEvent::SessionCreated {
@@ -297,7 +285,10 @@ mod tests {
         assert_eq!(sm.state, KioskState::Session);
         assert!(!sm.is_loading);
         assert!(sm.session.is_some());
-        assert!(cmds.iter().any(|c| matches!(c, KioskCommand::ConnectWebSocket { .. })));
+        assert!(sm.is_live_view());
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, KioskCommand::ConnectWebSocket { .. })));
     }
 
     #[test]
@@ -310,7 +301,9 @@ mod tests {
 
         // Trigger capture
         let cmds = sm.process(KioskEvent::TriggerCapture);
-        assert!(cmds.iter().any(|c| matches!(c, KioskCommand::TriggerCapture { .. })));
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, KioskCommand::TriggerCapture { .. })));
 
         // Countdown
         sm.process(KioskEvent::CountdownTick { value: 3 });
@@ -325,12 +318,13 @@ mod tests {
                 web_url: "/photo.jpg".into(),
             },
         });
-        assert_eq!(sm.photo_count(), 1);
+        assert_eq!(sm.session.as_ref().unwrap().photos.len(), 1);
 
         // Capture complete
         sm.process(KioskEvent::CaptureComplete);
         assert_eq!(sm.state, KioskState::Session);
         assert!(sm.countdown_value.is_none());
+        assert!(sm.is_live_view());
     }
 
     #[test]
@@ -352,7 +346,44 @@ mod tests {
     }
 
     #[test]
-    fn test_lightbox() {
+    fn test_photo_viewing() {
+        let mut sm = KioskStateMachine::new();
+        sm.process(KioskEvent::StartSession);
+        sm.process(KioskEvent::SessionCreated {
+            id: "test-123".into(),
+        });
+
+        // Add some photos
+        sm.process(KioskEvent::PhotoReady {
+            photo: PhotoInfo {
+                id: "photo-1".into(),
+                thumbnail_url: "/thumb1.jpg".into(),
+                web_url: "/photo1.jpg".into(),
+            },
+        });
+        sm.process(KioskEvent::PhotoReady {
+            photo: PhotoInfo {
+                id: "photo-2".into(),
+                thumbnail_url: "/thumb2.jpg".into(),
+                web_url: "/photo2.jpg".into(),
+            },
+        });
+
+        // Should start in live view
+        assert!(sm.is_live_view());
+
+        // Select a photo
+        sm.process(KioskEvent::SelectPhoto(0));
+        assert_eq!(sm.viewing_photo, Some(0));
+        assert!(!sm.is_live_view());
+
+        // Return to live view
+        sm.process(KioskEvent::SelectLive);
+        assert!(sm.is_live_view());
+    }
+
+    #[test]
+    fn test_capture_only_from_live_view() {
         let mut sm = KioskStateMachine::new();
         sm.process(KioskEvent::StartSession);
         sm.process(KioskEvent::SessionCreated {
@@ -366,15 +397,22 @@ mod tests {
             },
         });
 
-        // Open lightbox
-        sm.process(KioskEvent::OpenLightbox(0));
-        assert_eq!(sm.state, KioskState::Lightbox);
-        assert_eq!(sm.lightbox_index, Some(0));
+        // Select photo (not live view)
+        sm.process(KioskEvent::SelectPhoto(0));
+        assert!(!sm.is_live_view());
 
-        // Close lightbox
-        sm.process(KioskEvent::CloseLightbox);
-        assert_eq!(sm.state, KioskState::Session);
-        assert!(sm.lightbox_index.is_none());
+        // Try to capture - should not emit command
+        let cmds = sm.process(KioskEvent::TriggerCapture);
+        assert!(!cmds
+            .iter()
+            .any(|c| matches!(c, KioskCommand::TriggerCapture { .. })));
+
+        // Return to live and capture - should work
+        sm.process(KioskEvent::SelectLive);
+        let cmds = sm.process(KioskEvent::TriggerCapture);
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, KioskCommand::TriggerCapture { .. })));
     }
 
     #[test]
@@ -386,10 +424,13 @@ mod tests {
         });
 
         let cmds = sm.process(KioskEvent::EndSession);
-        assert!(cmds.iter().any(|c| matches!(c, KioskCommand::EndSession { .. })));
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, KioskCommand::EndSession { .. })));
 
         sm.process(KioskEvent::SessionEnded);
         assert_eq!(sm.state, KioskState::Welcome);
         assert!(sm.session.is_none());
+        assert!(sm.is_live_view());
     }
 }

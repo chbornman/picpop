@@ -18,10 +18,7 @@ pub struct CreateSessionResponse {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaptureResponse {
-    pub message: String,
-}
+
 
 /// HTTP client for the PicPop API
 #[derive(Clone)]
@@ -72,7 +69,8 @@ impl ApiClient {
     }
 
     /// Trigger photo capture
-    pub async fn capture(&self, session_id: &str) -> Result<CaptureResponse, ApiError> {
+    /// Note: This just triggers the capture - actual photo events come via WebSocket
+    pub async fn capture(&self, session_id: &str) -> Result<(), ApiError> {
         let url = config::capture_url(session_id);
         log::info!("Starting capture for session {} at {}", session_id, url);
 
@@ -84,9 +82,11 @@ impl ApiClient {
             return Err(ApiError::Server(format!("{}: {}", status, body)));
         }
 
-        let result: CaptureResponse = response.json().await?;
-        log::info!("Capture started: {}", result.message);
-        Ok(result)
+        // Don't parse response - just consume it
+        // Photos are sent via WebSocket events
+        let _ = response.bytes().await;
+        log::info!("Capture request completed for session {}", session_id);
+        Ok(())
     }
 
     /// Fetch image bytes from a URL

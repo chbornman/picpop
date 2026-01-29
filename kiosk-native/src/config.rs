@@ -9,11 +9,11 @@ pub const WS_BASE: &str = "ws://localhost:8000";
 /// Camera preview endpoint
 pub const CAMERA_PREVIEW_URL: &str = "http://localhost:8000/api/v1/camera/preview";
 
-/// Preview FPS (reduced for ARM efficiency)
-pub const PREVIEW_FPS: u32 = 10;
-
-/// QR code size in pixels
-pub const QR_SIZE: u32 = 512;
+/// QR code size in pixels (small, for collapsed view)
+/// Must be at least ~150px for reliable scanning of version 6 QR codes
+pub const QR_SIZE_SMALL: u32 = 150;
+/// QR code size in pixels (large, for expanded view)
+pub const QR_SIZE_LARGE: u32 = 280;
 
 /// WebSocket reconnection delay in milliseconds
 pub const WS_RECONNECT_DELAY_MS: u64 = 2000;
@@ -37,13 +37,16 @@ pub fn capture_url(session_id: &str) -> String {
 }
 
 /// Build the WiFi QR URL
-pub fn wifi_qr_url() -> String {
-    format!("{}/api/v1/sessions/wifi-qr?size={}", API_BASE, QR_SIZE)
+pub fn wifi_qr_url(size: u32) -> String {
+    format!("{}/api/v1/sessions/wifi-qr?size={}", API_BASE, size)
 }
 
 /// Build the session QR URL
-pub fn session_qr_url(session_id: &str) -> String {
-    format!("{}/api/v1/sessions/{}/qr?size={}", API_BASE, session_id, QR_SIZE)
+pub fn session_qr_url(session_id: &str, size: u32) -> String {
+    format!(
+        "{}/api/v1/sessions/{}/qr?size={}",
+        API_BASE, session_id, size
+    )
 }
 
 /// Build the WebSocket URL for a session

@@ -1,6 +1,7 @@
 /* PicPop Kiosk - GTK4 Stylesheet */
+/* Unified layout with floating elements */
 
-/* === Color Variables (using GTK4 @define-color) === */
+/* === Color Variables === */
 @define-color bg-dark #0F172A;
 @define-color bg-surface #1E293B;
 @define-color bg-card #334155;
@@ -13,323 +14,259 @@
 
 /* === Base Styles === */
 window {
-    background-color: @bg-dark;
-    color: @text-primary;
+  background-color: @bg-dark;
+  color: @text-primary;
 }
 
-/* === Welcome Screen === */
-.welcome-screen {
-    background-color: @bg-dark;
-}
-
-.video-background {
-    min-width: 100%;
-    min-height: 100%;
-}
-
-.welcome-content {
-    padding: 48px;
-    background-color: alpha(@bg-dark, 0.85);
-    border-radius: 24px;
-}
-
-.welcome-icon {
-    background: linear-gradient(135deg, @primary-purple, @primary-pink);
-    border-radius: 50%;
-    padding: 24px;
-    margin-bottom: 16px;
-}
-
-.welcome-icon-emoji {
-    font-size: 64px;
-}
-
-.welcome-title {
-    font-size: 72px;
-    font-weight: bold;
-    color: @text-primary;
-    margin-bottom: 8px;
-}
-
-.welcome-subtitle {
-    font-size: 28px;
-    color: @text-secondary;
-    margin-bottom: 32px;
-}
-
-.start-button {
-    background: linear-gradient(135deg, @primary-purple, @primary-pink);
-    color: @text-primary;
-    font-size: 24px;
-    font-weight: bold;
-    padding: 16px 48px;
-    border-radius: 16px;
-    border: none;
-    min-width: 280px;
-}
-
-.start-button:hover {
-    background: linear-gradient(135deg, shade(@primary-purple, 1.1), shade(@primary-pink, 1.1));
-}
-
-.start-button:active {
-    background: linear-gradient(135deg, shade(@primary-purple, 0.9), shade(@primary-pink, 0.9));
-}
-
-.start-button:disabled {
-    opacity: 0.7;
+/* Hide cursor for kiosk mode */
+window,
+window * {
+  cursor: none;
 }
 
 /* === Session Screen === */
 .session-screen {
-    background-color: @bg-dark;
+  background-color: @bg-dark;
 }
 
-.top-bar {
-    background-color: @bg-surface;
-    border-bottom: 1px solid @bg-card;
+/* === Main Area === */
+.main-video,
+.main-photo {
+  background-color: @bg-dark;
+}
+
+.main-photo {
+  /* Ensure photo is visible against dark background */
+  background-color: #000000;
+}
+
+/* === Welcome Content (centered) === */
+.welcome-content {
+  padding: 48px;
+  background-color: alpha(@bg-dark, 0.85);
+  border-radius: 24px;
+}
+
+.welcome-icon {
+  background: linear-gradient(135deg, @primary-purple, @primary-pink);
+  border-radius: 50%;
+  padding: 24px;
+  margin-bottom: 16px;
+  border: none;
+}
+
+.welcome-icon-image {
+  color: @text-primary;
+  -gtk-icon-size: 64px;
+}
+
+.welcome-title {
+  font-size: 72px;
+  font-weight: bold;
+  color: @text-primary;
+  margin-bottom: 8px;
+}
+
+.welcome-subtitle {
+  font-size: 28px;
+  color: @text-secondary;
+  margin-bottom: 32px;
+}
+
+.start-button {
+  background: linear-gradient(135deg, @primary-purple, @primary-pink);
+  color: @text-primary;
+  font-size: 24px;
+  font-weight: bold;
+  padding: 16px 48px;
+  border-radius: 16px;
+  border: none;
+  min-width: 280px;
+}
+
+.start-button:hover {
+  background: linear-gradient(135deg, shade(@primary-purple, 1.1), shade(@primary-pink, 1.1));
+}
+
+.start-button:disabled {
+  opacity: 0.7;
+}
+
+/* === Floating Status (top-left) === */
+.floating-status {
+  background-color: alpha(@bg-dark, 0.8);
+  border-radius: 12px;
+  padding: 8px 16px;
 }
 
 .phone-icon {
-    font-size: 24px;
+  color: @text-primary;
 }
 
 .phone-count {
-    font-size: 18px;
-    color: @text-primary;
+  font-size: 16px;
+  color: @text-primary;
+}
+
+/* === Floating Buttons === */
+.floating-button {
+  /* Generic floating button style */
 }
 
 .end-button {
-    background-color: @bg-card;
-    color: @text-primary;
-    font-size: 16px;
-    padding: 8px 24px;
-    border-radius: 8px;
-    border: none;
+  background-color: #ef4444;
+  background-image: none;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  box-shadow: none;
 }
 
 .end-button:hover {
-    background-color: shade(@bg-card, 1.2);
-}
-
-.session-content {
-    padding: 24px;
-}
-
-.preview-panel {
-    background-color: @bg-surface;
-    border-radius: 16px;
-    padding: 16px;
-}
-
-.video-preview {
-    border-radius: 12px;
-    background-color: @bg-dark;
-}
-
-.capturing-overlay {
-    background-color: alpha(@bg-dark, 0.7);
-    border-radius: 12px;
-    padding: 24px;
-}
-
-.capturing-label {
-    font-size: 32px;
-    font-weight: bold;
-    color: @accent-yellow;
+  background-color: #dc2626;
+  background-image: none;
 }
 
 /* === Capture Button === */
 .capture-button {
-    background: linear-gradient(135deg, @primary-purple, @primary-pink);
-    border-radius: 50%;
-    border: 4px solid @text-primary;
-    min-width: 120px;
-    min-height: 120px;
+  background: linear-gradient(135deg, @primary-purple, @primary-pink);
+  border-radius: 50%;
+  border: 4px solid @text-primary;
+  min-width: 100px;
+  min-height: 100px;
 }
 
 .capture-button:hover {
-    background: linear-gradient(135deg, shade(@primary-purple, 1.1), shade(@primary-pink, 1.1));
-    border-width: 5px;
-}
-
-.capture-button:active {
-    background: linear-gradient(135deg, shade(@primary-purple, 0.9), shade(@primary-pink, 0.9));
+  background: linear-gradient(135deg, shade(@primary-purple, 1.1), shade(@primary-pink, 1.1));
+  border-width: 5px;
 }
 
 .capture-button:disabled {
-    opacity: 0.5;
+  opacity: 0.5;
 }
 
 .capture-icon {
-    font-size: 48px;
+  color: @text-primary;
+  -gtk-icon-size: 40px;
 }
 
-.capture-status {
-    font-size: 18px;
-    color: @text-secondary;
+/* === QR Code Panel === */
+.qr-panel-small {
+  background-color: alpha(@bg-dark, 0.7);
+  border-radius: 12px;
+  padding: 8px;
 }
 
-/* === QR Code Sections === */
-.qr-panel {
-    padding: 16px;
+.qr-panel-expanded {
+  background-color: alpha(@bg-dark, 0.9);
+  border-radius: 16px;
+  padding: 16px;
 }
 
-.qr-section {
-    background-color: @bg-surface;
-    border-radius: 16px;
-    padding: 24px;
+.qr-clickable {
+  /* Visual feedback for clickable area */
 }
 
-.qr-title {
-    font-size: 20px;
-    font-weight: bold;
-    color: @text-primary;
-    margin-bottom: 12px;
-}
-
-.qr-subtitle {
-    font-size: 14px;
-    color: @text-secondary;
-    margin-top: 12px;
+.qr-label-small {
+  font-size: 10px;
+  font-weight: 600;
+  color: @text-secondary;
+  margin-top: 4px;
 }
 
 .qr-image {
-    background-color: white;
-    border-radius: 8px;
-    padding: 8px;
+  background-color: white;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+/* Legacy QR section styles (for any remaining uses) */
+.qr-section {
+  background-color: alpha(@bg-dark, 0.8);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.qr-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: @text-primary;
+  margin-bottom: 4px;
+}
+
+.qr-subtitle {
+  font-size: 12px;
+  color: @text-secondary;
+  margin-bottom: 8px;
 }
 
 /* === Photo Strip === */
 .photo-strip {
-    background-color: @bg-surface;
-    border-radius: 12px;
-    min-height: 130px;
+  background-color: alpha(@bg-dark, 0.8);
+  border-radius: 12px;
+  min-height: 120px;
 }
 
 .photo-strip-inner {
-    padding: 12px;
+  padding: 10px;
 }
 
 .photo-thumbnail {
-    border-radius: 8px;
-    border: 2px solid transparent;
-    padding: 0;
-    background-color: @bg-card;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  padding: 0;
+  background-color: @bg-card;
+  min-width: 100px;
+  min-height: 100px;
 }
 
 .photo-thumbnail:hover {
-    border-color: @primary-purple;
+  border-color: @primary-purple;
+}
+
+.photo-thumbnail.selected {
+  border-color: @primary-pink;
+  border-width: 3px;
+}
+
+/* === Live Tile === */
+.live-tile {
+  background: linear-gradient(135deg, @primary-purple, @primary-pink);
+}
+
+.live-tile.selected {
+  border-color: @accent-mint;
+}
+
+.live-icon {
+  color: @text-primary;
+}
+
+.live-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: @text-primary;
 }
 
 /* === Countdown Overlay === */
 .countdown-overlay {
-    background-color: alpha(@bg-dark, 0.9);
-}
-
-.countdown-ring {
-    background: linear-gradient(135deg, @primary-purple, @primary-pink);
-    border-radius: 50%;
-    min-width: 300px;
-    min-height: 300px;
-    opacity: 0.3;
-    animation: pulse-ring 1.5s ease-out infinite;
+  background-color: alpha(@bg-dark, 0.9);
 }
 
 .countdown-number {
-    font-size: 200px;
-    font-weight: bold;
-    color: @text-primary;
-}
-
-.countdown-number.countdown-animate {
-    animation: countdown-pop 0.3s ease-out;
-}
-
-.countdown-ready {
-    font-size: 36px;
-    color: @text-secondary;
-    margin-top: 24px;
-}
-
-/* === Lightbox === */
-.lightbox {
-    background-color: alpha(@bg-dark, 0.95);
-}
-
-.lightbox-top-bar {
-    padding: 16px 24px;
-}
-
-.lightbox-counter {
-    font-size: 18px;
-    color: @text-secondary;
-}
-
-.lightbox-close {
-    background-color: @bg-card;
-    color: @text-primary;
-    font-size: 24px;
-    padding: 8px 16px;
-    border-radius: 8px;
-    border: none;
-}
-
-.lightbox-close:hover {
-    background-color: shade(@bg-card, 1.3);
-}
-
-.lightbox-nav {
-    background-color: alpha(@bg-card, 0.8);
-    color: @text-primary;
-    font-size: 48px;
-    padding: 24px;
-    margin: 16px;
-    border-radius: 12px;
-    border: none;
-}
-
-.lightbox-nav:hover {
-    background-color: @bg-card;
-}
-
-.lightbox-nav:disabled {
-    opacity: 0.3;
-}
-
-.lightbox-image {
-    margin: 16px;
-}
-
-/* === Animations === */
-@keyframes pulse-ring {
-    0% {
-        transform: scale(1);
-        opacity: 0.3;
-    }
-    100% {
-        transform: scale(1.5);
-        opacity: 0;
-    }
-}
-
-@keyframes countdown-pop {
-    0% {
-        transform: scale(0.8);
-    }
-    50% {
-        transform: scale(1.1);
-    }
-    100% {
-        transform: scale(1);
-    }
+  font-size: 200px;
+  font-weight: bold;
+  color: @text-primary;
 }
 
 /* === Error States === */
 .error-message {
-    background-color: alpha(#EF4444, 0.9);
-    color: @text-primary;
-    font-size: 18px;
-    padding: 16px 32px;
-    border-radius: 12px;
+  background-color: alpha(#ef4444, 0.9);
+  color: @text-primary;
+  font-size: 18px;
+  padding: 16px 32px;
+  border-radius: 12px;
 }
