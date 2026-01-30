@@ -216,6 +216,8 @@ pub fn create_session_screen(
 
     overlay.add_overlay(&countdown_overlay);
 
+    // Note: Escape hatch is now handled at window level (see window.rs)
+
     SessionWidgets {
         overlay,
         main_stack,

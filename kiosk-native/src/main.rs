@@ -9,8 +9,9 @@
 
 use std::sync::Arc;
 
-use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 mod api;
 mod app;
@@ -40,8 +41,8 @@ fn main() {
     std::env::set_var("XCURSOR_THEME", "InvisibleCursor");
     std::env::set_var("XCURSOR_SIZE", "1");
 
-    // Create GTK application
-    let app = gtk::Application::builder()
+    // Create libadwaita application
+    let app = adw::Application::builder()
         .application_id("com.picpop.kiosk")
         .build();
 
