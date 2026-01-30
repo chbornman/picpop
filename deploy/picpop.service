@@ -9,8 +9,8 @@ Wants=hostapd.service dnsmasq.service
 
 [Service]
 Type=simple
-User=kiosk
-Group=kiosk
+User=picpop
+Group=picpop
 WorkingDirectory=/opt/picpop
 Environment="PATH=/opt/picpop/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PICPOP_ENV=production"

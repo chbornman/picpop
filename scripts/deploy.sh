@@ -34,14 +34,14 @@ What Gets Deployed:
         - Systemd service: picpop.service
 
     Kiosk:
-        - Native binary -> /home/kiosk/picpop-kiosk
-        - Systemd service: picpop-kiosk.service
+        - Native binary -> /home/picpop/picpop-kiosk
+        - Symlink: /home/picpop/kiosk-app -> picpop-kiosk
 
 Prerequisites:
     Run ./scripts/build.sh first (or individual build scripts)
 
 Environment Variables:
-    RADXA_HOST      SSH target (default: kiosk@192.168.0.110)
+    RADXA_HOST      SSH target (default: picpop@192.168.0.110)
 EOF
     exit 0
 fi
@@ -117,23 +117,19 @@ deploy_server() {
 }
 
 # =============================================================================
-# Deploy Kiosk
+# Deploy Kiosk (binary only - starts via auto-login, not systemd)
 # =============================================================================
 deploy_kiosk() {
     log "Deploying kiosk..."
-
-    # Stop existing service
-    log "Stopping picpop-kiosk service..."
-    ssh "$RADXA_HOST" "sudo systemctl stop picpop-kiosk 2>/dev/null || true"
 
     if $ON_RADXA; then
         # Kiosk was built on device - just copy from build location
         log "Installing kiosk binary (built on device)..."
         ssh "$RADXA_HOST" "test -f ~/kiosk-native/target/release/picpop-kiosk" || \
             error "Kiosk binary not found on device. Run ./scripts/build-kiosk.sh --on-radxa first"
-        ssh "$RADXA_HOST" "sudo cp ~/kiosk-native/target/release/picpop-kiosk /home/kiosk/picpop-kiosk && \
-            sudo chown kiosk:kiosk /home/kiosk/picpop-kiosk && \
-            sudo chmod +x /home/kiosk/picpop-kiosk"
+        ssh "$RADXA_HOST" "cp ~/kiosk-native/target/release/picpop-kiosk ~/picpop-kiosk && \
+            chmod +x ~/picpop-kiosk && \
+            ln -sf ~/picpop-kiosk ~/kiosk-app"
     else
         # Kiosk was cross-compiled locally - copy binary to device
         if [[ ! -f "$KIOSK_OUTPUT_CROSS" ]]; then
@@ -141,22 +137,11 @@ deploy_kiosk() {
         fi
 
         log "Copying kiosk binary to device..."
-        scp "$KIOSK_OUTPUT_CROSS" "$RADXA_HOST:/tmp/picpop-kiosk"
-        ssh "$RADXA_HOST" "sudo cp /tmp/picpop-kiosk /home/kiosk/picpop-kiosk && \
-            sudo chown kiosk:kiosk /home/kiosk/picpop-kiosk && \
-            sudo chmod +x /home/kiosk/picpop-kiosk"
+        scp "$KIOSK_OUTPUT_CROSS" "$RADXA_HOST:~/picpop-kiosk"
+        ssh "$RADXA_HOST" "chmod +x ~/picpop-kiosk && ln -sf ~/picpop-kiosk ~/kiosk-app"
     fi
 
-    # Deploy service file
-    log "Deploying picpop-kiosk.service..."
-    scp "$DEPLOY_DIR/picpop-kiosk.service" "$RADXA_HOST:/tmp/picpop-kiosk.service"
-    ssh "$RADXA_HOST" "sudo cp /tmp/picpop-kiosk.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable picpop-kiosk"
-
-    # Start the service
-    log "Starting picpop-kiosk service..."
-    ssh "$RADXA_HOST" "sudo systemctl start picpop-kiosk"
-
-    info "Kiosk deployed successfully"
+    info "Kiosk binary deployed (starts via auto-login)"
 }
 
 # =============================================================================
@@ -171,9 +156,14 @@ echo ""
 header "Deployment Complete"
 
 # Show service status
-log "Checking service status..."
-ssh "$RADXA_HOST" "sudo systemctl status picpop picpop-kiosk --no-pager -n 3" || warn "One or more services may not be running"
+log "Checking backend service status..."
+ssh "$RADXA_HOST" "sudo systemctl status picpop --no-pager -n 3" || warn "Backend service may not be running"
+
+# Check if kiosk is running
+log "Checking kiosk process..."
+ssh "$RADXA_HOST" "pgrep -a picpop-kiosk" && info "Kiosk is running" || warn "Kiosk not running (may need reboot or re-login on TTY1)"
 
 echo ""
 log "Deployment successful!"
-info "Server: http://$RADXA_HOST:8000 (or http://192.168.4.1 via WiFi AP)"
+info "Backend: http://${RADXA_HOST#*@}:8000"
+info "Kiosk starts via auto-login on TTY1"

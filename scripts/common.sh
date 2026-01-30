@@ -9,7 +9,7 @@ set -e
 # =============================================================================
 
 # Target device (override with environment variable)
-export RADXA_HOST="${RADXA_HOST:-kiosk@192.168.0.110}"
+export RADXA_HOST="${RADXA_HOST:-picpop@192.168.0.110}"
 export REMOTE_PATH="/opt/picpop"
 
 # Build targets

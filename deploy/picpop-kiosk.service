@@ -1,6 +1,8 @@
 # PicPop Kiosk Application Service (Cage + Native GTK4)
-# Copy to /etc/systemd/system/picpop-kiosk.service on the Radxa device
-# Then run: systemctl daemon-reload && systemctl enable picpop-kiosk
+# NOTE: This is a fallback service. The preferred method is auto-login via
+# /etc/kiosk.conf which starts the app from ~/.bash_profile
+#
+# To use this instead: systemctl enable picpop-kiosk && loginctl enable-linger picpop
 
 [Unit]
 Description=PicPop Kiosk Application
@@ -9,11 +11,11 @@ Wants=dbus.socket systemd-logind.service picpop.service
 
 [Service]
 Type=simple
-User=kiosk
-Group=kiosk
+User=picpop
+Group=picpop
 
 # XDG runtime directory (required for Wayland)
-Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="XDG_RUNTIME_DIR=/run/user/1001"
 
 # GTK/GStreamer settings
 Environment="GDK_BACKEND=wayland"
@@ -28,15 +30,15 @@ Environment="MESA_GLSL_VERSION_OVERRIDE=330"
 # Hide cursor using invisible cursor theme
 Environment="XCURSOR_THEME=InvisibleCursor"
 Environment="XCURSOR_SIZE=1"
-Environment="XCURSOR_PATH=/home/kiosk/.local/share/icons"
+Environment="XCURSOR_PATH=/home/picpop/.local/share/icons"
 
 # Workaround for cursor issues on some ARM GPUs
 Environment="WLR_NO_HARDWARE_CURSORS=1"
 
-WorkingDirectory=/home/kiosk
+WorkingDirectory=/home/picpop
 
 # Launch Cage with the native GTK4 kiosk
-ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -s /home/kiosk/picpop-kiosk
+ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -s /home/picpop/kiosk-app
 
 # Restart on failure
 Restart=always
